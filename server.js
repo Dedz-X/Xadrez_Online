@@ -160,6 +160,20 @@ function encerrar(sala, resultado) {
   sala.ultimoEvento = Date.now();
 }
 
+
+function sanitizarNome(n) {
+  if (typeof n !== 'string') n = n == null ? '' : String(n);
+  n = n.replace(/[\u0000-\u001F\u007F-\u009F<>&"'`]/g, '').replace(/\s+/g, ' ').trim();
+  if (n.length > 20) n = n.slice(0, 20).trim();
+  return n;
+}
+
+function aplicarNome(jogador, nome) {
+  if (!jogador) return;
+  const n = sanitizarNome(nome);
+  if (n) jogador.nome = n;
+}
+
 function corDoPapel(sala, papel) {
   if (!sala.corAnfitriao) return null;
   return papel === 'anfitriao' ? sala.corAnfitriao : ladoOposto(sala.corAnfitriao);
@@ -197,6 +211,12 @@ function estadoPublico(sala) {
     },
     corAnfitriao: sala.corAnfitriao || null,
     sugestaoCorAnfitriao: sala.sugestaoCorAnfitriao || 'w',
+    nomes: {
+      anfitriao: (a && a.nome) || null,
+      convidado: (c && c.nome) || null,
+      w: (sala.jogadores.w && sala.jogadores.w.nome) || null,
+      b: (sala.jogadores.b && sala.jogadores.b.nome) || null,
+    },
   };
 }
 
@@ -247,7 +267,7 @@ function atualizarCorDosSockets(sala) {
 // Criação / entrada / reconexão
 // ---------------------------------------------------------------------------
 
-function criarSala(modoId) {
+function criarSala(modoId, nome) {
   const modo = MODOS[modoId];
   if (!modo) return null;
 
@@ -262,6 +282,7 @@ function criarSala(modoId) {
         socketId: null,
         conectado: false,
         ultimoVisto: Date.now(),
+        nome: sanitizarNome(nome) || null,
       },
       convidado: null,
     },
@@ -281,10 +302,13 @@ function criarSala(modoId) {
   return { sala: sala, papel: 'anfitriao', token: token };
 }
 
-function sentar(sala, tokenExistente) {
+function sentar(sala, tokenExistente, nome) {
   if (tokenExistente) {
     const achou = jogadorPorToken(sala, tokenExistente);
-    if (achou) return { papel: achou.papel, cor: achou.cor, token: achou.jogador.token, reconectou: true };
+    if (achou) {
+      aplicarNome(achou.jogador, nome);
+      return { papel: achou.papel, cor: achou.cor, token: achou.jogador.token, reconectou: true };
+    }
   }
   if (sala.status === 'terminado' && !tokenExistente) return { erro: 'Esta partida já terminou.' };
   if (sala.participantes.convidado) return { erro: 'A sala está cheia.' };
@@ -294,6 +318,7 @@ function sentar(sala, tokenExistente) {
     socketId: null,
     conectado: false,
     ultimoVisto: Date.now(),
+    nome: sanitizarNome(nome) || null,
   };
   sala.ultimoEvento = Date.now();
   return { papel: 'convidado', cor: null, token: token, reconectou: false };
@@ -439,7 +464,7 @@ io.on('connection', (socket) => {
       return socket.emit('erro', { mensagem: 'Modo inválido.' });
     }
     try {
-      const criado = criarSala(modoId);
+      const criado = criarSala(modoId, dados && dados.nome);
       ligarSocket(criado.sala, criado.papel, socket);
       socket.emit('entrouSala', {
         codigo: criado.sala.codigo,
@@ -463,7 +488,7 @@ io.on('connection', (socket) => {
     const sala = salas.get(codigo);
     if (!sala) return socket.emit('erro', { mensagem: 'Sala não encontrada.' });
 
-    const lugar = sentar(sala, token || null);
+    const lugar = sentar(sala, token || null, dados && dados.nome);
     if (lugar.erro) return socket.emit('erro', { mensagem: lugar.erro });
 
     const acabouDeCompletar = !lugar.reconectou && lugar.papel === 'convidado' && sala.status === 'aguardando';
@@ -507,6 +532,7 @@ io.on('connection', (socket) => {
     if (!achou) return socket.emit('erro', { mensagem: 'Esta identidade não pertence à sala.' });
 
     verificarFlag(sala);
+    aplicarNome(achou.jogador, dados && dados.nome);
     ligarSocket(sala, achou.papel, socket);
     socket.emit('entrouSala', {
       codigo: sala.codigo,
@@ -528,6 +554,17 @@ io.on('connection', (socket) => {
       papel: achou.papel,
       estado: estadoPublico(sala),
     });
+  });
+
+  socket.on('atualizarNome', (dados) => {
+    if (!dentroDaTaxa(socket, 8, 5000)) return;
+    const sala = salas.get(socket.data.codigo);
+    if (!sala || !socket.data.papel) return;
+    const j = sala.participantes[socket.data.papel];
+    if (!j) return;
+    aplicarNome(j, dados && dados.nome);
+    sala.ultimoEvento = Date.now();
+    emitirEstado(sala);
   });
 
   socket.on('escolherCor', (dados) => {

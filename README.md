@@ -76,6 +76,13 @@ git push -u origin main
 
 Observação: no plano gratuito o serviço pode “dormir” após um tempo sem tráfego. A primeira visita seguinte demora um pouco para acordar.
 
+
+## Versões
+
+O histórico de versões está em [CHANGELOG.md](CHANGELOG.md).
+Este projeto segue o [Versionamento Semântico](https://semver.org/lang/pt-BR/)
+(`MAJOR.MINOR.PATCH`). A versão atual é **1.1.0**.
+
 ## Testes do motor
 
 Na pasta do projeto:

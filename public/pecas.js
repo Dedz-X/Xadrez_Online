@@ -1,7 +1,8 @@
 /**
  * Conjuntos de peças do xadrez.
  * -----------------------------
- *  - unicode:  as figuras tradicionais do sistema (♔♕♖…)
+ *  - unicode:  glifos preenchidos (♚♛♜♝♞♟) coloridos por CSS
+ *              (brancas claras com contorno escuro; pretas escuras com contorno claro)
  *  - staunton: conjunto SVG clássico, no espírito das peças Staunton
  *              (desenhos originais deste projeto)
  *  - pixelado: conjunto 16×16 em estilo 8-bit, desenhado com retângulos SVG
@@ -12,7 +13,8 @@
 'use strict';
 
 const SIMBOLOS_UNICODE = {
-  K: '♔', Q: '♕', R: '♖', B: '♗', N: '♘', P: '♙',
+  // Sempre os glifos preenchidos; a cor (clara/escura) vem do CSS.
+  K: '♚', Q: '♛', R: '♜', B: '♝', N: '♞', P: '♟',
   k: '♚', q: '♛', r: '♜', b: '♝', n: '♞', p: '♟',
 };
 
@@ -303,9 +305,10 @@ function criarElementoPeca(peca, estilo, classeExtra) {
   const el = document.createElement('span');
   el.className = 'peca' + (classeExtra ? ' ' + classeExtra : '');
   el.dataset.piece = peca;
+  el.classList.add(ehBranca(peca) ? 'peca-branca' : 'peca-preta');
   if (!estilo || estilo === 'unicode') {
     el.classList.add('peca-unicode');
-    el.textContent = SIMBOLOS_UNICODE[peca] || peca;
+    el.textContent = SIMBOLOS_UNICODE[peca.toLowerCase()] || peca;
   } else {
     el.classList.add('peca-svg');
     if (estilo === 'pixelado' || estilo === 'plano') el.classList.add('peca-pixel');
@@ -317,10 +320,11 @@ function criarElementoPeca(peca, estilo, classeExtra) {
 /** Atualiza um elemento de peça já existente para o estilo atual. */
 function aplicarEstiloEm(el, peca, estilo) {
   el.dataset.piece = peca;
-  el.classList.remove('peca-unicode', 'peca-svg', 'peca-pixel');
+  el.classList.remove('peca-unicode', 'peca-svg', 'peca-pixel', 'peca-branca', 'peca-preta');
+  el.classList.add(ehBranca(peca) ? 'peca-branca' : 'peca-preta');
   if (!estilo || estilo === 'unicode') {
     el.classList.add('peca-unicode');
-    el.textContent = SIMBOLOS_UNICODE[peca] || peca;
+    el.textContent = SIMBOLOS_UNICODE[peca.toLowerCase()] || peca;
   } else {
     el.classList.add('peca-svg');
     if (estilo === 'pixelado' || estilo === 'plano') el.classList.add('peca-pixel');

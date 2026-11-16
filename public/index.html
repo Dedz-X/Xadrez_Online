@@ -23,6 +23,29 @@
 <body>
   <button type="button" id="btn-config" class="botao-config" title="Configurações" aria-label="Abrir configurações">⚙️</button>
 
+  <!-- ======================== TELA DO NOME ======================== -->
+  <div id="tela-nome" class="tela tela-inicio tela-nome" hidden>
+    <header class="cabecalho cabecalho-inicio">
+      <div class="logo">
+        <span class="logo-peca" aria-hidden="true">♞</span>
+        <div>
+          <h1>Xadrez</h1>
+          <p class="subtitulo">Como você quer aparecer nas partidas</p>
+        </div>
+      </div>
+    </header>
+    <form id="form-nome" class="cartao cartao-nome" autocomplete="on">
+      <h2>Seu nome</h2>
+      <p>Esse nome aparece para o oponente, nos relógios e no resultado da partida.</p>
+      <label for="input-nome">Seu nome</label>
+      <input id="input-nome" name="nome" type="text" maxlength="20" minlength="1" required spellcheck="false" autocomplete="nickname" class="campo-nome" placeholder="Ex.: André">
+      <p class="ajuda-config">De 1 a 20 caracteres. Você pode alterar depois em ⚙️ Configurações.</p>
+      <div class="acoes" style="margin-top: 1rem;">
+        <button type="submit" class="botao botao-principal">Continuar</button>
+      </div>
+    </form>
+  </div>
+
   <!-- ======================== TELA INICIAL ======================== -->
   <div id="tela-inicio" class="tela tela-inicio">
     <header class="cabecalho cabecalho-inicio">
@@ -72,9 +95,6 @@
             <p id="subtitulo-jogo" class="subtitulo">Dois jogadores no mesmo computador</p>
           </div>
         </div>
-        <div class="controles-cabecalho">
-          <button type="button" id="btn-mudo" class="botao-mudo" aria-pressed="false" title="Silenciar sons" aria-label="Som ativado. Clique para silenciar.">🔊</button>
-        </div>
       </header>
 
       <div id="faixa-online" class="faixa-online" hidden>
@@ -94,6 +114,7 @@
       <div id="overlay-espera" class="overlay-espera" hidden>
         <div class="cartao cartao-espera">
           <h2>Aguardando oponente</h2>
+          <p id="nome-espera" class="nome-sala"></p>
           <p>Compartilhe o código ou o link de convite.</p>
           <p class="codigo-grande" id="codigo-espera">-----</p>
           <button type="button" id="btn-copiar-link-espera" class="botao botao-principal">Copiar link de convite</button>
@@ -104,6 +125,7 @@
       <div id="overlay-cores" class="overlay-espera overlay-cores" hidden>
         <div class="cartao cartao-espera cartao-cores" role="dialog" aria-modal="true" aria-labelledby="titulo-cores">
           <h2 id="titulo-cores">Quem joga de brancas?</h2>
+          <p id="nomes-cores" class="nome-sala"></p>
           <div id="menu-cores-anfitriao">
             <p class="modal-ajuda">O anfitrião escolhe as cores. A partida só começa depois desta escolha.</p>
             <div class="grade-escolha-cores">
@@ -121,12 +143,20 @@
 
       <main class="principal">
         <section class="area-tabuleiro" aria-label="Tabuleiro de xadrez">
+          <div id="barra-lado-topo" class="barra-lado" data-pos="topo">
+            <span class="barra-nome"></span>
+            <span class="barra-meta"><span class="barra-cor"></span><span class="barra-tempo"></span></span>
+          </div>
           <div class="tabuleiro-envoltorio">
             <div id="coordenadas-esq" class="coordenadas verticais" aria-hidden="true"></div>
             <div class="tabuleiro-bloco">
               <div id="tabuleiro" class="tabuleiro" role="grid" aria-label="Tabuleiro"></div>
               <div id="coordenadas-base" class="coordenadas horizontais" aria-hidden="true"></div>
             </div>
+          </div>
+          <div id="barra-lado-base" class="barra-lado" data-pos="base">
+            <span class="barra-nome"></span>
+            <span class="barra-meta"><span class="barra-cor"></span><span class="barra-tempo"></span></span>
           </div>
           <div id="fantasma" class="fantasma" hidden></div>
         </section>
@@ -149,11 +179,17 @@
             <p class="rotulo">Relógios</p>
             <div class="relogios">
               <div id="relogio-w" class="relogio" data-lado="w">
-                <span class="relogio-lado">♔ Brancas</span>
+                <div class="relogio-info">
+                  <span class="relogio-lado">Brancas</span>
+                  <span class="relogio-nome" id="nome-rel-w"></span>
+                </div>
                 <span id="rel-brancas" class="relogio-tempo" data-ms="0">10:00</span>
               </div>
               <div id="relogio-b" class="relogio" data-lado="b">
-                <span class="relogio-lado">♚ Pretas</span>
+                <div class="relogio-info">
+                  <span class="relogio-lado">Pretas</span>
+                  <span class="relogio-nome" id="nome-rel-b"></span>
+                </div>
                 <span id="rel-pretas" class="relogio-tempo" data-ms="0">10:00</span>
               </div>
             </div>
@@ -259,10 +295,24 @@
       <h2 id="titulo-config">⚙️ Configurações</h2>
 
       <section class="grupo-config">
+        <h3>Nome</h3>
+        <label class="rotulo-slider" for="cfg-nome">Seu nome</label>
+        <input id="cfg-nome" type="text" maxlength="20" spellcheck="false" autocomplete="nickname" class="campo-nome" placeholder="Ex.: André">
+        <label class="rotulo-slider" for="cfg-nome-pretas">Nome das pretas (partida local)</label>
+        <input id="cfg-nome-pretas" type="text" maxlength="20" spellcheck="false" class="campo-nome" placeholder="Jogador 2">
+        <p class="ajuda-config">Nas partidas locais, as brancas usam o seu nome e as pretas usam o nome acima (o padrão é “Jogador 2”).</p>
+      </section>
+
+      <section class="grupo-config">
         <h3>Som</h3>
-        <label class="opcao-check"><input type="checkbox" id="cfg-som" checked> Som ligado</label>
-        <label class="rotulo-slider" for="cfg-volume">Volume <span id="cfg-volume-valor">70%</span></label>
-        <input type="range" id="cfg-volume" min="0" max="100" value="70" class="slider">
+        <div class="linha-som">
+          <button type="button" id="cfg-som" class="botao-toggle-som" role="switch" aria-checked="true" aria-labelledby="cfg-som-rotulo">
+            <span class="toggle-trilho" aria-hidden="true"><span class="toggle-pino"></span></span>
+            <span id="cfg-som-rotulo">Som: ligado</span>
+          </button>
+          <label class="rotulo-slider rotulo-volume" for="cfg-volume">Volume <span id="cfg-volume-valor">70%</span></label>
+        </div>
+        <input type="range" id="cfg-volume" min="0" max="100" value="70" class="slider" aria-label="Volume">
         <p class="rotulo-slider">Pacote de som</p>
         <div class="grade-opcoes" role="radiogroup" aria-label="Pacote de som">
           <button type="button" class="botao-opcao" data-cfg="pacoteSom" data-valor="moderno">Moderno</button>

@@ -28,6 +28,8 @@ const CONFIG_PADRAO = {
   estiloPecas: 'unicode',
   dicasLances: true,
   coordenadas: true,
+  nome: '',
+  nomeLocalPretas: 'Jogador 2',
 };
 
 const DURACAO_LANCE = 220;
@@ -48,13 +50,30 @@ const TEXTOS_STATUS = {
 // Configurações (valem para o modo local e o online)
 // ------------------------------------------------------------------------
 
+function sanitizarNome(n) {
+  if (typeof n !== 'string') n = n == null ? '' : String(n);
+  n = n.replace(/[\u0000-\u001F\u007F-\u009F<>&"'`]/g, '').replace(/\s+/g, ' ').trim();
+  if (n.length > 20) n = n.slice(0, 20).trim();
+  return n;
+}
+function nomeDoUsuario() {
+  return sanitizarNome(config && config.nome);
+}
+
 function carregarConfig() {
   try {
     const bruto = localStorage.getItem(CONFIG_CHAVE);
     if (bruto) {
       const c = Object.assign({}, CONFIG_PADRAO, JSON.parse(bruto));
-      if (c.estiloPecas === 'plano') {
-        c.estiloPecas = 'pixelado';
+      let mudou = false;
+      if (c.estiloPecas === 'plano') { c.estiloPecas = 'pixelado'; mudou = true; }
+      const nome = sanitizarNome(c.nome);
+      const nomeP = sanitizarNome(c.nomeLocalPretas) || 'Jogador 2';
+      if (nome !== (c.nome || '')) { c.nome = nome; mudou = true; }
+      else c.nome = nome;
+      if (nomeP !== (c.nomeLocalPretas || '')) { c.nomeLocalPretas = nomeP; mudou = true; }
+      else c.nomeLocalPretas = nomeP;
+      if (mudou) {
         try { localStorage.setItem(CONFIG_CHAVE, JSON.stringify(c)); } catch (e) { /* ignore */ }
       }
       return c;
@@ -121,6 +140,7 @@ let socket = null;
 let relogioOnline = null;
 
 // DOM
+const elTelaNome = document.getElementById('tela-nome');
 const elTelaInicio = document.getElementById('tela-inicio');
 const elTelaJogo = document.getElementById('tela-jogo');
 const elTabuleiro = document.getElementById('tabuleiro');
@@ -270,21 +290,19 @@ function aplicarPreferenciasVisuais() {
   elCoordBase.classList.toggle('oculto', !config.coordenadas);
 }
 
-function atualizarBotaoMudo() {
-  const btn = document.getElementById('btn-mudo');
+function atualizarControleSom() {
+  const btn = document.getElementById('cfg-som');
+  const rotulo = document.getElementById('cfg-som-rotulo');
   if (!btn) return;
-  const mudo = !config.som;
-  btn.textContent = mudo ? '🔇' : '🔊';
-  btn.setAttribute('aria-pressed', mudo ? 'true' : 'false');
-  btn.title = mudo ? 'Ativar sons' : 'Silenciar sons';
-  btn.setAttribute('aria-label', mudo ? 'Som desativado. Clique para ativar.' : 'Som ativado. Clique para silenciar.');
+  const ligado = !!config.som;
+  btn.setAttribute('aria-checked', ligado ? 'true' : 'false');
+  if (rotulo) rotulo.textContent = ligado ? 'Som: ligado' : 'Som: desligado';
 }
 
 function alternarMudo() {
   config.som = !config.som;
   salvarConfig();
-  atualizarBotaoMudo();
-  sincronizarBotoesConfig();
+  atualizarControleSom();
   if (config.som) {
     if (SonsXadrez && SonsXadrez.garantirAudio) SonsXadrez.garantirAudio();
     som('clique');
@@ -292,22 +310,24 @@ function alternarMudo() {
 }
 
 function sincronizarBotoesConfig() {
-  const somOn = document.getElementById('cfg-som');
   const vol = document.getElementById('cfg-volume');
   const volV = document.getElementById('cfg-volume-valor');
   const dicas = document.getElementById('cfg-dicas');
   const coords = document.getElementById('cfg-coordenadas');
-  if (somOn) somOn.checked = !!config.som;
+  atualizarControleSom();
   if (vol) vol.value = String(Math.round((config.volume || 0) * 100));
   if (volV) volV.textContent = Math.round((config.volume || 0) * 100) + '%';
   if (dicas) dicas.checked = !!config.dicasLances;
   if (coords) coords.checked = !!config.coordenadas;
+  const inNome = document.getElementById('cfg-nome');
+  const inPretas = document.getElementById('cfg-nome-pretas');
+  if (inNome && document.activeElement !== inNome) inNome.value = config.nome || '';
+  if (inPretas && document.activeElement !== inPretas) inPretas.value = config.nomeLocalPretas || 'Jogador 2';
   document.querySelectorAll('#modal-config [data-cfg]').forEach((btn) => {
     const chave = btn.getAttribute('data-cfg');
     btn.setAttribute('aria-pressed', String(config[chave] === btn.getAttribute('data-valor')));
   });
   atualizarAmostraPecas();
-  atualizarBotaoMudo();
 }
 
 function atualizarAmostraPecas() {
@@ -331,8 +351,13 @@ function fecharConfig() { elModalConfig.hidden = true; }
 // ------------------------------------------------------------------------
 
 function mostrarTela(nome) {
+  if (elTelaNome) elTelaNome.hidden = nome !== 'nome';
   elTelaInicio.hidden = nome !== 'inicio';
   elTelaJogo.hidden = nome !== 'jogo';
+}
+
+function irParaInicio() {
+  mostrarTela(nomeDoUsuario() ? 'inicio' : 'nome');
 }
 
 function voltarAoInicio() {
@@ -354,7 +379,7 @@ function voltarAoInicio() {
   fecharPromocao();
   elModalEmpate.hidden = true;
   pausarRelogio();
-  mostrarTela('inicio');
+  irParaInicio();
 }
 
 // ------------------------------------------------------------------------
@@ -482,7 +507,9 @@ function nomeDaPeca(peca) {
 
 function atualizarPainel(status, capturaRecente) {
   const vezBrancas = jogo.vez() === 'w';
-  elTextoVez.textContent = vezBrancas ? 'Brancas' : 'Pretas';
+  const nomeVez = nomeDoLado(vezBrancas ? 'w' : 'b');
+  const corVez = vezBrancas ? 'Brancas' : 'Pretas';
+  elTextoVez.textContent = (nomeVez && nomeVez !== corVez) ? nomeVez : corVez;
   elPecaVez.innerHTML = '';
   elPecaVez.appendChild(criarElementoPeca(vezBrancas ? 'K' : 'k', estiloPecas()));
 
@@ -525,6 +552,7 @@ function atualizarPainel(status, capturaRecente) {
 
   const acabou = partidaAcabou();
   elBtnRevanche.hidden = !(online.ativo && acabou);
+  atualizarNomesNaInterface();
   if (online.ativo && online.estado && online.estado.revanche && online.papel) {
     elBtnRevanche.textContent = online.estado.revanche[online.papel] ? 'Aguardando oponente…' : 'Revanche';
   } else if (online.ativo && acabou) {
@@ -549,21 +577,88 @@ function preencherCapturas(el, pecas, capturaRecente) {
   nos.reverse().forEach((n) => el.appendChild(n));
 }
 
+function nomeDoLado(cor) {
+  if (online.ativo && online.estado && online.estado.nomes) {
+    const n = sanitizarNome(online.estado.nomes[cor]);
+    if (n) return n;
+  }
+  if (cor === 'w') return nomeDoUsuario() || 'Brancas';
+  return sanitizarNome(config.nomeLocalPretas) || 'Jogador 2';
+}
+
+function rotuloVencedor(cor) {
+  const n = nomeDoLado(cor);
+  const padrao = cor === 'w' ? 'Brancas' : 'Pretas';
+  if (!n || n === padrao) return padrao + ' vencem';
+  return n + ' venceu';
+}
+
 function montarMensagemStatus(status) {
   const res = resultadoAtual();
   if (status === 'xeque-mate') {
-    const vencedor = (res && res.vencedor) ? (res.vencedor === 'w' ? 'Brancas' : 'Pretas') : (jogo.vez() === 'w' ? 'Pretas' : 'Brancas');
-    return 'Xeque-mate — ' + vencedor + ' vencem!';
+    const cor = (res && res.vencedor) ? res.vencedor : (jogo.vez() === 'w' ? 'b' : 'w');
+    return 'Xeque-mate — ' + rotuloVencedor(cor) + '!';
   }
   if (status === 'tempo') {
-    const vencedor = res && res.vencedor === 'w' ? 'Brancas' : 'Pretas';
-    return vencedor + ' vencem no tempo';
+    const cor = res && res.vencedor ? res.vencedor : 'w';
+    return rotuloVencedor(cor) + ' no tempo';
   }
   if (status === 'desistencia') {
-    const vencedor = res && res.vencedor === 'w' ? 'Brancas' : 'Pretas';
-    return vencedor + ' vencem — desistência';
+    const cor = res && res.vencedor ? res.vencedor : 'w';
+    return rotuloVencedor(cor) + ' — desistência';
   }
   return TEXTOS_STATUS[status] || '';
+}
+
+
+function preencherBarraLado(el, cor) {
+  if (!el) return;
+  const nome = nomeDoLado(cor);
+  const rotulo = cor === 'w' ? 'Brancas' : 'Pretas';
+  const nEl = el.querySelector('.barra-nome');
+  const cEl = el.querySelector('.barra-cor');
+  const tEl = el.querySelector('.barra-tempo');
+  if (nEl) nEl.textContent = nome || rotulo;
+  if (cEl) cEl.textContent = rotulo;
+  if (tEl) {
+    const temRelogio = !elCartaoRelogios.hidden && modoAtual && modoAtual.minutos != null;
+    tEl.textContent = temRelogio ? (document.getElementById(cor === 'w' ? 'rel-brancas' : 'rel-pretas').textContent) : '';
+    tEl.hidden = !temRelogio;
+  }
+  el.classList.toggle('ativo', relogio.ativo === cor && !elCartaoRelogios.hidden);
+}
+
+function atualizarNomesNaInterface() {
+  const nw = nomeDoLado('w');
+  const nb = nomeDoLado('b');
+  const elW = document.getElementById('nome-rel-w');
+  const elB = document.getElementById('nome-rel-b');
+  if (elW) elW.textContent = nw && nw !== 'Brancas' ? nw : '';
+  if (elB) elB.textContent = nb && nb !== 'Pretas' ? nb : '';
+
+  const topo = document.getElementById('barra-lado-topo');
+  const base = document.getElementById('barra-lado-base');
+  const corBase = brancasEmbaixo ? 'w' : 'b';
+  const corTopo = brancasEmbaixo ? 'b' : 'w';
+  if (topo) preencherBarraLado(topo, corTopo);
+  if (base) preencherBarraLado(base, corBase);
+
+  const espera = document.getElementById('nome-espera');
+  if (espera) {
+    const eu = nomeDoUsuario();
+    const op = online.estado && online.estado.nomes && (
+      online.papel === 'anfitriao' ? online.estado.nomes.convidado : online.estado.nomes.anfitriao
+    );
+    espera.textContent = eu ? ('Você: ' + eu + (op ? '  ·  Oponente: ' + sanitizarNome(op) : '')) : '';
+  }
+  const nomesCores = document.getElementById('nomes-cores');
+  if (nomesCores && online.estado && online.estado.nomes) {
+    const a = sanitizarNome(online.estado.nomes.anfitriao) || 'Anfitrião';
+    const c = sanitizarNome(online.estado.nomes.convidado) || 'Convidado';
+    nomesCores.textContent = a + '  ·  ' + c;
+  } else if (nomesCores) {
+    nomesCores.textContent = '';
+  }
 }
 
 function classeDoStatus(status) {
@@ -722,6 +817,14 @@ function pintarRelogios() {
   elBoxB.classList.toggle('ativo', ativo && relogio.ativo === 'b');
   elBoxW.classList.toggle('tempo-baixo', !semTempo && relogio.w < 10000);
   elBoxB.classList.toggle('tempo-baixo', !semTempo && relogio.b < 10000);
+  const topo = document.getElementById('barra-lado-topo');
+  const base = document.getElementById('barra-lado-base');
+  if (topo || base) {
+    const corBase = brancasEmbaixo ? 'w' : 'b';
+    const corTopo = brancasEmbaixo ? 'b' : 'w';
+    if (topo) preencherBarraLado(topo, corTopo);
+    if (base) preencherBarraLado(base, corBase);
+  }
 }
 
 function salvarRetratoRelogio() { historicoRelogio.push({ w: relogio.w, b: relogio.b }); }
@@ -1045,8 +1148,9 @@ document.addEventListener('mousemove', (e) => { if (arraste) noMovePointer(e.cli
 document.addEventListener('mouseup', (e) => { if (arraste) encerrarArraste(e.clientX, e.clientY); });
 document.addEventListener('touchmove', (e) => {
   if (!arraste) return;
-  const t = e.changedTouches[0];
-  noMovePointer(t.clientX, t.clientY, e);
+  if (e.cancelable) e.preventDefault();
+  const toque = e.changedTouches[0];
+  noMovePointer(toque.clientX, toque.clientY, e);
 }, { passive: false });
 document.addEventListener('touchend', (e) => {
   if (!arraste) return;
@@ -1441,14 +1545,14 @@ document.getElementById('form-criar').addEventListener('submit', (e) => {
   const fd = new FormData(e.target);
   const modo = fd.get('modo');
   elModalCriar.hidden = true;
-  emitirQuandoPronto('criarSala', { modo: modo });
+  emitirQuandoPronto('criarSala', { modo: modo, nome: nomeDoUsuario() });
 });
 document.getElementById('form-entrar').addEventListener('submit', (e) => {
   e.preventDefault();
   const codigo = document.getElementById('input-codigo').value.toUpperCase().trim();
   if (!codigo) return;
   const token = tokenDaSala(codigo);
-  emitirQuandoPronto('entrarSala', { codigo: codigo, token: token || undefined });
+  emitirQuandoPronto('entrarSala', { codigo: codigo, token: token || undefined, nome: nomeDoUsuario() || undefined });
 });
 
 if (elOverlayCores) {
@@ -1532,16 +1636,25 @@ elBtnGirar.addEventListener('click', () => {
   renderizar();
 });
 
+function ajustarRolagemDoTabuleiro() {
+  if (!elTelaJogo || elTelaJogo.hidden) return;
+  const area = document.querySelector('.area-tabuleiro');
+  if (!area) return;
+  const barra = document.getElementById('barra-lado-topo');
+  const barrasVisiveis = barra && getComputedStyle(barra).display !== 'none';
+  if (barrasVisiveis && window.matchMedia('(max-width: 860px) and (orientation: landscape)').matches) {
+    area.scrollIntoView({ block: 'start', inline: 'nearest' });
+  }
+}
+window.addEventListener('resize', () => {
+  if (ajustarRolagemDoTabuleiro._t) clearTimeout(ajustarRolagemDoTabuleiro._t);
+  ajustarRolagemDoTabuleiro._t = setTimeout(ajustarRolagemDoTabuleiro, 80);
+});
+window.addEventListener('orientationchange', () => setTimeout(ajustarRolagemDoTabuleiro, 120));
+
 document.getElementById('btn-config').addEventListener('click', abrirConfig);
 document.getElementById('btn-config-fechar').addEventListener('click', fecharConfig);
-document.getElementById('btn-mudo').addEventListener('click', alternarMudo);
-
-document.getElementById('cfg-som').addEventListener('change', (e) => {
-  config.som = e.target.checked;
-  salvarConfig();
-  atualizarBotaoMudo();
-  if (config.som) { if (SonsXadrez) SonsXadrez.garantirAudio(); som('clique'); }
-});
+document.getElementById('cfg-som').addEventListener('click', () => alternarMudo());
 document.getElementById('cfg-volume').addEventListener('input', (e) => {
   config.volume = Number(e.target.value) / 100;
   document.getElementById('cfg-volume-valor').textContent = e.target.value + '%';
@@ -1595,7 +1708,7 @@ document.addEventListener('keydown', () => { if (SonsXadrez) SonsXadrez.garantir
 document.addEventListener('click', (e) => {
   const btn = e.target.closest('button');
   if (!btn || btn.disabled) return;
-  if (btn.id === 'btn-mudo' || btn.id === 'btn-config' || btn.id === 'btn-jogar-local' || btn.id === 'btn-criar-sala') return;
+  if (btn.id === 'cfg-som' || btn.id === 'btn-config' || btn.id === 'btn-jogar-local' || btn.id === 'btn-criar-sala') return;
   if (btn.hasAttribute('data-tema-escolha') || btn.hasAttribute('data-modo') || btn.hasAttribute('data-cfg')) return;
   if (btn.closest('#tabuleiro') || btn.closest('#opcoes-promocao')) return;
   som('clique');
@@ -1615,21 +1728,67 @@ globalThis.XadrezApp = {
   abrirPromocao: abrirPromocao,
 };
 
+function salvarNomeDoCampo(el, chave, fallback) {
+  const n = sanitizarNome(el.value) || (fallback || '');
+  el.value = n;
+  if (config[chave] === n) return;
+  config[chave] = n;
+  salvarConfig();
+  if (chave === 'nome' && online.ativo) emitirQuandoPronto('atualizarNome', { nome: n });
+  if (elTelaJogo && !elTelaJogo.hidden) renderizar();
+}
+
+if (document.getElementById('form-nome')) {
+  document.getElementById('form-nome').addEventListener('submit', (e) => {
+    e.preventDefault();
+    const n = sanitizarNome(document.getElementById('input-nome').value);
+    if (!n) {
+      document.getElementById('input-nome').focus();
+      return;
+    }
+    config.nome = n;
+    salvarConfig();
+    som('clique');
+    mostrarTela('inicio');
+    const params = new URLSearchParams(location.search);
+    const sala = (params.get('sala') || '').toUpperCase().trim();
+    if (sala) {
+      const token = tokenDaSala(sala);
+      if (token) emitirQuandoPronto('reconectar', { codigo: sala, token: token, nome: n });
+      else emitirQuandoPronto('entrarSala', { codigo: sala, nome: n });
+    }
+  });
+}
+const cfgNome = document.getElementById('cfg-nome');
+const cfgNomeP = document.getElementById('cfg-nome-pretas');
+if (cfgNome) {
+  cfgNome.addEventListener('change', () => salvarNomeDoCampo(cfgNome, 'nome', ''));
+}
+if (cfgNomeP) {
+  cfgNomeP.addEventListener('change', () => salvarNomeDoCampo(cfgNomeP, 'nomeLocalPretas', 'Jogador 2'));
+}
+
 aplicarTema(config.tema, { silencioso: true });
-atualizarBotaoMudo();
+atualizarControleSom();
 sincronizarBotoesConfig();
 aplicarPreferenciasVisuais();
 garantirLoopRelogio();
 
-(function tentarReconectar() {
+(function arranqueTelas() {
   const params = new URLSearchParams(location.search);
   const sala = (params.get('sala') || '').toUpperCase().trim();
+  if (sala) document.getElementById('input-codigo').value = sala;
+  if (!nomeDoUsuario()) {
+    if (document.getElementById('input-nome')) document.getElementById('input-nome').value = '';
+    mostrarTela('nome');
+    return;
+  }
+  mostrarTela('inicio');
   if (!sala) return;
-  document.getElementById('input-codigo').value = sala;
   const token = tokenDaSala(sala);
   if (token) {
-    emitirQuandoPronto('reconectar', { codigo: sala, token: token });
+    emitirQuandoPronto('reconectar', { codigo: sala, token: token, nome: nomeDoUsuario() });
   } else {
-    emitirQuandoPronto('entrarSala', { codigo: sala });
+    emitirQuandoPronto('entrarSala', { codigo: sala, nome: nomeDoUsuario() });
   }
 })();
