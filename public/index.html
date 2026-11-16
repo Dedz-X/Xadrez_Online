@@ -1,0 +1,337 @@
+<!DOCTYPE html>
+<html lang="pt-BR" data-tema="madeira">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
+  <meta name="theme-color" content="#12141a">
+  <meta name="description" content="Xadrez local e online para dois jogadores.">
+  <title>Xadrez</title>
+  <script>
+    (function () {
+      try {
+        var c = JSON.parse(localStorage.getItem('xadrez-config') || 'null');
+        var t = (c && c.tema) || localStorage.getItem('xadrez-tema');
+        if (t === 'madeira' || t === 'verde' || t === 'oceano') {
+          document.documentElement.setAttribute('data-tema', t);
+        }
+      } catch (e) {}
+    })();
+  </script>
+  <link rel="stylesheet" href="style.css">
+  <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' rx='6' fill='%2312141a'/%3E%3Ctext x='16' y='24' text-anchor='middle' font-size='22'%3E%E2%99%9A%3C/text%3E%3C/svg%3E">
+</head>
+<body>
+  <button type="button" id="btn-config" class="botao-config" title="Configurações" aria-label="Abrir configurações">⚙️</button>
+
+  <!-- ======================== TELA INICIAL ======================== -->
+  <div id="tela-inicio" class="tela tela-inicio">
+    <header class="cabecalho cabecalho-inicio">
+      <div class="logo">
+        <span class="logo-peca" aria-hidden="true">♞</span>
+        <div>
+          <h1>Xadrez</h1>
+          <p class="subtitulo">Jogue localmente ou online, no mesmo navegador</p>
+        </div>
+      </div>
+    </header>
+
+    <div class="grade-inicio">
+      <section class="cartao cartao-inicio">
+        <h2>Jogar online</h2>
+        <p>Crie uma sala e convide alguém com um código ou um link.</p>
+        <div class="acoes">
+          <button type="button" id="btn-criar-sala" class="botao botao-principal">Criar sala</button>
+        </div>
+        <form id="form-entrar" class="form-entrar" autocomplete="off">
+          <label for="input-codigo">Entrar com código</label>
+          <div class="linha-codigo">
+            <input id="input-codigo" name="codigo" type="text" maxlength="5" spellcheck="false" placeholder="K7X2Q" aria-label="Código da sala" class="campo-codigo">
+            <button type="submit" class="botao">Entrar</button>
+          </div>
+        </form>
+      </section>
+
+      <section class="cartao cartao-inicio">
+        <h2>Jogar local</h2>
+        <p>Dois jogadores no mesmo computador, sem relógio de rede.</p>
+        <div class="acoes">
+          <button type="button" id="btn-jogar-local" class="botao botao-principal">Jogar neste computador</button>
+        </div>
+      </section>
+    </div>
+  </div>
+
+  <!-- ======================== TELA DE JOGO ======================== -->
+  <div id="tela-jogo" class="tela tela-jogo" hidden>
+    <div class="app">
+      <header class="cabecalho">
+        <div class="logo">
+          <span class="logo-peca" aria-hidden="true">♞</span>
+          <div>
+            <h1>Xadrez</h1>
+            <p id="subtitulo-jogo" class="subtitulo">Dois jogadores no mesmo computador</p>
+          </div>
+        </div>
+        <div class="controles-cabecalho">
+          <button type="button" id="btn-mudo" class="botao-mudo" aria-pressed="false" title="Silenciar sons" aria-label="Som ativado. Clique para silenciar.">🔊</button>
+        </div>
+      </header>
+
+      <div id="faixa-online" class="faixa-online" hidden>
+        <div class="faixa-codigo">
+          <span>Sala</span>
+          <strong id="texto-codigo">-----</strong>
+          <button type="button" id="btn-copiar-link" class="botao botao-estreito">Copiar link</button>
+        </div>
+        <p id="aviso-conexao" class="aviso-conexao" hidden role="status">Oponente desconectado — aguardando reconexão…</p>
+        <div id="acoes-online" class="acoes-online">
+          <button type="button" id="btn-desistir" class="botao">Desistir</button>
+          <button type="button" id="btn-empate" class="botao">Propor empate</button>
+          <button type="button" id="btn-revanche" class="botao botao-principal" hidden>Revanche</button>
+        </div>
+      </div>
+
+      <div id="overlay-espera" class="overlay-espera" hidden>
+        <div class="cartao cartao-espera">
+          <h2>Aguardando oponente</h2>
+          <p>Compartilhe o código ou o link de convite.</p>
+          <p class="codigo-grande" id="codigo-espera">-----</p>
+          <button type="button" id="btn-copiar-link-espera" class="botao botao-principal">Copiar link de convite</button>
+          <button type="button" id="btn-cancelar-espera" class="botao">Cancelar</button>
+        </div>
+      </div>
+
+      <div id="overlay-cores" class="overlay-espera overlay-cores" hidden>
+        <div class="cartao cartao-espera cartao-cores" role="dialog" aria-modal="true" aria-labelledby="titulo-cores">
+          <h2 id="titulo-cores">Quem joga de brancas?</h2>
+          <div id="menu-cores-anfitriao">
+            <p class="modal-ajuda">O anfitrião escolhe as cores. A partida só começa depois desta escolha.</p>
+            <div class="grade-escolha-cores">
+              <button type="button" class="botao botao-cor" data-escolha="w">Eu (criador) de brancas</button>
+              <button type="button" class="botao botao-cor" data-escolha="b">Eu (criador) de pretas</button>
+              <button type="button" class="botao botao-cor" data-escolha="aleatoria">Aleatório</button>
+            </div>
+          </div>
+          <p id="espera-cores-convidado" class="texto-espera-cores" hidden>Aguardando o anfitrião escolher as cores...</p>
+          <div id="revelar-cor" class="revelar-cor" hidden>
+            <p id="texto-revelar-cor" class="texto-revelar-cor"></p>
+          </div>
+        </div>
+      </div>
+
+      <main class="principal">
+        <section class="area-tabuleiro" aria-label="Tabuleiro de xadrez">
+          <div class="tabuleiro-envoltorio">
+            <div id="coordenadas-esq" class="coordenadas verticais" aria-hidden="true"></div>
+            <div class="tabuleiro-bloco">
+              <div id="tabuleiro" class="tabuleiro" role="grid" aria-label="Tabuleiro"></div>
+              <div id="coordenadas-base" class="coordenadas horizontais" aria-hidden="true"></div>
+            </div>
+          </div>
+          <div id="fantasma" class="fantasma" hidden></div>
+        </section>
+
+        <aside class="painel" aria-label="Informações da partida">
+          <div class="cartao vez-cartao">
+            <div id="indicador-vez" class="indicador-vez">
+              <span id="peca-vez" class="peca-vez">♔</span>
+              <div>
+                <p class="rotulo">Vez de</p>
+                <p id="texto-vez" class="texto-vez">Brancas</p>
+              </div>
+            </div>
+            <p id="status-jogo" class="status-jogo" role="status"></p>
+            <p id="modo-atual" class="modo-atual">Modo: Livre (sem tempo)</p>
+            <p id="sua-cor" class="modo-atual" hidden></p>
+          </div>
+
+          <div id="cartao-relogios" class="cartao relogios-cartao" hidden>
+            <p class="rotulo">Relógios</p>
+            <div class="relogios">
+              <div id="relogio-w" class="relogio" data-lado="w">
+                <span class="relogio-lado">♔ Brancas</span>
+                <span id="rel-brancas" class="relogio-tempo" data-ms="0">10:00</span>
+              </div>
+              <div id="relogio-b" class="relogio" data-lado="b">
+                <span class="relogio-lado">♚ Pretas</span>
+                <span id="rel-pretas" class="relogio-tempo" data-ms="0">10:00</span>
+              </div>
+            </div>
+          </div>
+
+          <div class="cartao capturas-cartao">
+            <p class="rotulo">Peças capturadas</p>
+            <div class="linha-capturas">
+              <span class="captura-lado">Pretas</span>
+              <div id="capturadas-pretas" class="capturadas" aria-label="Peças pretas capturadas"></div>
+            </div>
+            <div class="linha-capturas">
+              <span class="captura-lado">Brancas</span>
+              <div id="capturadas-brancas" class="capturadas" aria-label="Peças brancas capturadas"></div>
+            </div>
+          </div>
+
+          <div class="cartao historico-cartao">
+            <p class="rotulo">Histórico de lances</p>
+            <ol id="historico" class="historico" aria-live="polite"></ol>
+          </div>
+
+          <div class="acoes">
+            <button type="button" id="btn-novo" class="botao botao-principal">Novo jogo</button>
+            <button type="button" id="btn-desfazer" class="botao" title="Desfazer também restaura o tempo que havia no relógio antes do lance. Indisponível nas partidas online.">Desfazer jogada</button>
+            <button type="button" id="btn-girar" class="botao">Girar tabuleiro</button>
+            <button type="button" id="btn-inicio" class="botao">Voltar ao início</button>
+          </div>
+        </aside>
+      </main>
+    </div>
+  </div>
+
+  <!-- Diálogo de promoção -->
+  <div id="modal-promocao" class="modal" hidden>
+    <div class="modal-caixa" role="dialog" aria-modal="true" aria-labelledby="titulo-promocao">
+      <h2 id="titulo-promocao">Escolha a peça da promoção</h2>
+      <p class="modal-ajuda">O peão chegou à última fileira.</p>
+      <div id="opcoes-promocao" class="opcoes-promocao">
+        <button type="button" data-peca="q" class="botao-promocao"><span class="promo-simbolo" data-simbolo></span><span>Dama</span></button>
+        <button type="button" data-peca="r" class="botao-promocao"><span class="promo-simbolo" data-simbolo></span><span>Torre</span></button>
+        <button type="button" data-peca="b" class="botao-promocao"><span class="promo-simbolo" data-simbolo></span><span>Bispo</span></button>
+        <button type="button" data-peca="n" class="botao-promocao"><span class="promo-simbolo" data-simbolo></span><span>Cavalo</span></button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Menu de modos (partida local) -->
+  <div id="modal-modos" class="modal" hidden>
+    <div class="modal-caixa modal-modos" role="dialog" aria-modal="true" aria-labelledby="titulo-modos">
+      <h2 id="titulo-modos">Nova partida local</h2>
+      <p class="modal-ajuda">Escolha o modo. As brancas começam. Desfazer um lance também devolve o tempo de antes desse lance. Se alguém perder no tempo, a partida termina.</p>
+      <section class="grupo-modos">
+        <h3>Livre</h3>
+        <button type="button" class="botao-modo" data-modo="livre">
+          <span class="modo-nome">Livre (sem tempo)</span>
+          <span class="modo-detalhe">Sem relógio — jogue no seu ritmo</span>
+        </button>
+      </section>
+      <section class="grupo-modos">
+        <h3>Rápido</h3>
+        <button type="button" class="botao-modo" data-modo="10+0">
+          <span class="modo-nome">Rápido 10 min</span>
+          <span class="modo-detalhe">10 minutos, sem acréscimo</span>
+        </button>
+      </section>
+      <section class="grupo-modos">
+        <h3>Blitz</h3>
+        <button type="button" class="botao-modo" data-modo="3+0">
+          <span class="modo-nome">Blitz 3 min</span>
+          <span class="modo-detalhe">3 minutos, sem acréscimo</span>
+        </button>
+      </section>
+      <div class="acoes-modal acoes-modos">
+        <button type="button" id="btn-modos-cancelar" class="botao">Cancelar</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Criar sala online -->
+  <div id="modal-criar" class="modal" hidden>
+    <div class="modal-caixa modal-modos" role="dialog" aria-modal="true" aria-labelledby="titulo-criar">
+      <h2 id="titulo-criar">Criar sala</h2>
+      <p class="modal-ajuda">Escolha o modo da partida. As cores são definidas depois que o oponente entrar, pelo anfitrião.</p>
+      <form id="form-criar" class="form-criar">
+        <fieldset class="grupo-modos">
+          <legend>Modo</legend>
+          <label class="opcao-radio"><input type="radio" name="modo" value="livre" checked> Livre (sem tempo)</label>
+          <label class="opcao-radio"><input type="radio" name="modo" value="10+0"> Rápido 10 min</label>
+          <label class="opcao-radio"><input type="radio" name="modo" value="3+0"> Blitz 3 min</label>
+        </fieldset>
+        <div class="acoes-modal">
+          <button type="button" id="btn-criar-cancelar" class="botao">Cancelar</button>
+          <button type="submit" class="botao botao-principal">Criar sala</button>
+        </div>
+      </form>
+    </div>
+  </div>
+
+  <!-- Configurações -->
+  <div id="modal-config" class="modal" hidden>
+    <div class="modal-caixa modal-config" role="dialog" aria-modal="true" aria-labelledby="titulo-config">
+      <h2 id="titulo-config">⚙️ Configurações</h2>
+
+      <section class="grupo-config">
+        <h3>Som</h3>
+        <label class="opcao-check"><input type="checkbox" id="cfg-som" checked> Som ligado</label>
+        <label class="rotulo-slider" for="cfg-volume">Volume <span id="cfg-volume-valor">70%</span></label>
+        <input type="range" id="cfg-volume" min="0" max="100" value="70" class="slider">
+        <p class="rotulo-slider">Pacote de som</p>
+        <div class="grade-opcoes" role="radiogroup" aria-label="Pacote de som">
+          <button type="button" class="botao-opcao" data-cfg="pacoteSom" data-valor="moderno">Moderno</button>
+          <button type="button" class="botao-opcao" data-cfg="pacoteSom" data-valor="classico">Clássico</button>
+        </div>
+        <p class="ajuda-config">O pacote clássico reproduz o toque da peça de madeira no tabuleiro (gerado no próprio navegador, sem arquivos de áudio).</p>
+      </section>
+
+      <section class="grupo-config">
+        <h3>Tema visual</h3>
+        <div class="grade-opcoes" role="radiogroup" aria-label="Tema">
+          <button type="button" class="botao-opcao" data-cfg="tema" data-valor="madeira"><span class="swatch swatch-madeira"></span> Madeira</button>
+          <button type="button" class="botao-opcao" data-cfg="tema" data-valor="verde"><span class="swatch swatch-verde"></span> Clássico</button>
+          <button type="button" class="botao-opcao" data-cfg="tema" data-valor="oceano"><span class="swatch swatch-oceano"></span> Oceano</button>
+        </div>
+      </section>
+
+      <section class="grupo-config">
+        <h3>Estilo das peças</h3>
+        <div class="grade-opcoes" role="radiogroup" aria-label="Estilo das peças">
+          <button type="button" class="botao-opcao" data-cfg="estiloPecas" data-valor="unicode">Unicode</button>
+          <button type="button" class="botao-opcao" data-cfg="estiloPecas" data-valor="staunton">Staunton</button>
+          <button type="button" class="botao-opcao" data-cfg="estiloPecas" data-valor="pixelado">Pixelado</button>
+        </div>
+        <div id="amostra-pecas" class="amostra-pecas" aria-hidden="true"></div>
+      </section>
+
+      <section class="grupo-config">
+        <h3>Tabuleiro</h3>
+        <label class="opcao-check"><input type="checkbox" id="cfg-dicas" checked> Mostrar dicas de lances legais</label>
+        <label class="opcao-check"><input type="checkbox" id="cfg-coordenadas" checked> Mostrar coordenadas (a–h, 1–8)</label>
+      </section>
+
+      <div class="acoes-modal acoes-modos">
+        <button type="button" id="btn-config-fechar" class="botao botao-principal">Fechar</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Empate proposto -->
+  <div id="modal-empate" class="modal" hidden>
+    <div class="modal-caixa modal-caixa-estreita" role="dialog" aria-modal="true" aria-labelledby="titulo-empate">
+      <h2 id="titulo-empate">Proposta de empate</h2>
+      <p class="modal-ajuda">O oponente propôs empate. Você aceita?</p>
+      <div class="acoes-modal">
+        <button type="button" id="btn-empate-recusar" class="botao">Recusar</button>
+        <button type="button" id="btn-empate-aceitar" class="botao botao-principal">Aceitar</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Confirmações genéricas (desistir, sair, etc.) -->
+  <div id="modal-confirma" class="modal" hidden>
+    <div class="modal-caixa modal-caixa-estreita" role="dialog" aria-modal="true" aria-labelledby="titulo-confirma">
+      <h2 id="titulo-confirma">Confirmar</h2>
+      <p id="texto-confirma" class="modal-ajuda"></p>
+      <div class="acoes-modal">
+        <button type="button" id="btn-confirma-nao" class="botao">Cancelar</button>
+        <button type="button" id="btn-confirma-sim" class="botao botao-principal">Confirmar</button>
+      </div>
+    </div>
+  </div>
+
+  <div id="toast" class="toast" hidden role="status"></div>
+
+  <script src="/socket.io/socket.io.js"></script>
+  <script src="chess-engine.js"></script>
+  <script src="pecas.js"></script>
+  <script src="sons.js"></script>
+  <script src="script.js"></script>
+</body>
+</html>
