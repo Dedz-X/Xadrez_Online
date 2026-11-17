@@ -133,31 +133,6 @@ função real de **todas** as peças, inclusive das capturadas. No tabuleiro fin
 e em **Revisar partida**, cada impostora ganha um selo dourado com a função que
 ela tinha; peças sem selo eram o que pareciam.
 
-## Publicar no Render (serviço web gratuito)
-
-1. Crie um repositório no GitHub e envie esta pasta (sem `node_modules`):
-
-```bat
-git init
-git add .
-git commit -m "Xadrez online"
-git branch -M main
-git remote add origin https://github.com/SEU_USUARIO/SEU_REPO.git
-git push -u origin main
-```
-
-2. No [Render](https://render.com), faça login (pode ser com o GitHub).
-3. Clique em **New** → **Web Service** e selecione o repositório.
-4. Preencha:
-   - **Build Command:** `npm install`
-   - **Start Command:** `npm start`
-   - **Instance type:** Free
-5. Crie o serviço e aguarde o deploy. O Render define a variável `PORT` automaticamente; o servidor já a utiliza.
-6. O endereço público será algo como `https://seu-servico.onrender.com`.
-
-Observação: no plano gratuito o serviço pode “dormir” após um tempo sem tráfego. A primeira visita seguinte demora um pouco para acordar.
-
-
 ## Versões
 
 O histórico de versões está em [CHANGELOG.md](CHANGELOG.md).
