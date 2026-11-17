@@ -14,6 +14,19 @@
  * visão filtrada deste jogador (as próprias peças com a função real, as do
  * oponente só com a aparência). Desenhamos a aparência e, por cima, um selo
  * com a função real (nas nossas peças disfarçadas e nas peças reveladas).
+ *
+ * v1.3.0
+ *  - Contra o bot (modoApp 'bot'): partida local em que um lado é o bot.
+ *    O bot pensa num Web Worker (bot-worker.js), sem travar a interface.
+ *  - Espectador (online.espectador): só assiste; recebe o estado público.
+ *  - Chat rápido: frases prontas e emojis (chat-rapido.js), só online.
+ *  - Revisar partida: depois do fim, navega lance a lance em qualquer modo.
+ *    No Impostor, a revisão mostra a função real de cada peça.
+ *  - Painel com subabas (Partida / Histórico / Chat / Opções).
+ *  - Marcações (marcacoes.js): setas e círculos com o botão direito (ou toque
+ *    longo no celular), só locais, a qualquer momento.
+ *  - Pré-lance (prelance.js): online e contra o bot, agenda um lance na vez
+ *    do adversário; ele sai sozinho assim que o adversário joga (se for legal).
  */
 'use strict';
 
@@ -30,11 +43,24 @@ const CONFIG_PADRAO = {
   volume: 0.7,
   pacoteSom: 'moderno',
   tema: 'madeira',
-  estiloPecas: 'unicode',
+  estiloPecas: 'classico',
   dicasLances: true,
   coordenadas: true,
   nome: '',
   nomeLocalPretas: 'Jogador 2',
+  /** Chat rápido: true = não mostrar as mensagens do oponente. */
+  chatMudo: false,
+  /** Pré-lance (online e contra o bot): ligado por padrão. */
+  prelance: true,
+  /** Preferências do modo contra o bot (lembradas para a próxima vez). */
+  botNivel: 'medio',
+  botCor: 'w',
+  /**
+   * Versão do formato da configuração. A 2 (v1.3.0) trocou os estilos de
+   * peça: quem tinha "staunton"/"unicode" passa para "classico" (o novo
+   * padrão) e quem tinha "pixelado" passa para "pixel".
+   */
+  versaoConfig: 2,
 };
 
 const DURACAO_LANCE = 220;
@@ -50,6 +76,7 @@ const TEXTOS_STATUS = {
   'empate-acordo': 'Empate por acordo',
   'empate-tempo': 'Empate — o adversário não pode dar mate',
   montando: 'Montando as peças (modo Impostor)…',
+  'aguardando-jogadores': 'Aguardando os jogadores…',
 };
 
 const NOMES_FUNCAO = { k: 'Rei', q: 'Dama', r: 'Torre', b: 'Bispo', n: 'Cavalo', p: 'Peão' };
@@ -74,7 +101,15 @@ function carregarConfig() {
     if (bruto) {
       const c = Object.assign({}, CONFIG_PADRAO, JSON.parse(bruto));
       let mudou = false;
-      if (c.estiloPecas === 'plano') { c.estiloPecas = 'pixelado'; mudou = true; }
+      // Migração dos estilos de peça da v1.2.x para os novos (ver CONFIG_PADRAO).
+      if (!c.versaoConfig || c.versaoConfig < 2) {
+        const antigo = c.estiloPecas;
+        c.estiloPecas = (antigo === 'pixelado' || antigo === 'plano') ? 'pixel' : 'classico';
+        c.versaoConfig = 2;
+        mudou = true;
+      }
+      const estiloOk = normalizarEstilo(c.estiloPecas);
+      if (estiloOk !== c.estiloPecas) { c.estiloPecas = estiloOk; mudou = true; }
       const nome = sanitizarNome(c.nome);
       const nomeP = sanitizarNome(c.nomeLocalPretas) || 'Jogador 2';
       if (nome !== (c.nome || '')) { c.nome = nome; mudou = true; }
@@ -123,8 +158,35 @@ let lancesDaSelecao = [];
 let promocaoPendente = null;
 let arraste = null;
 let animando = false;
+/** Pré-lance agendado: {from, to} ou null (só um por vez). */
+let prelance = null;
+/** Setas e círculos desenhados pelo jogador (só locais). */
+const marcas = MarcacoesTabuleiro.novoEstado();
+/** Seta sendo desenhada com o botão direito: {de, para, cor} ou null. */
+let marcaArrastando = null;
+/** Qual posição as marcações acompanham (mudou de posição → apagam). */
+let chaveDasMarcas = '';
 let modoAtual = MODOS.livre;
-let modoApp = 'inicio'; // 'inicio' | 'local' | 'online'
+let modoApp = 'inicio'; // 'inicio' | 'local' | 'bot' | 'online'
+
+/**
+ * Partida contra o bot. corJogador é a cor do humano; o bot joga a outra.
+ * idPedido descarta respostas antigas do Worker (ex.: depois de desfazer).
+ */
+const NOMES_NIVEL = { facil: 'Fácil', medio: 'Médio', dificil: 'Difícil' };
+const bot = {
+  nivel: 'medio',
+  corJogador: 'w',
+  pensando: false,
+  idPedido: 0,
+  worker: null,
+};
+
+/**
+ * Revisão da partida: lista de posições (uma por meio-lance, a 0 é o início)
+ * e o índice que está na tela. Cada posição: { tabuleiro, visao, ultimo }.
+ */
+const revisao = { ativa: false, indice: 0, posicoes: [] };
 
 const relogio = { w: 0, b: 0, ativo: null, ultimoTick: 0, pausado: true };
 let historicoRelogio = [];
@@ -143,6 +205,8 @@ const online = {
   estado: null,
   aguardando: false,
   escolhendoCores: false,
+  /** true quando só estamos assistindo (sem cor, sem token). */
+  espectador: false,
 };
 let socket = null;
 let relogioOnline = null;
@@ -192,6 +256,11 @@ const elBtnGirar = document.getElementById('btn-girar');
 const elBtnNovo = document.getElementById('btn-novo');
 const elSubtitulo = document.getElementById('subtitulo-jogo');
 const elToast = document.getElementById('toast');
+const elModalBot = document.getElementById('modal-bot');
+const elBtnRevisar = document.getElementById('btn-revisar');
+const elBarraRevisao = document.getElementById('barra-revisao');
+const elCamadaMarcas = document.getElementById('camada-marcas');
+const elAvisoPrelance = document.getElementById('aviso-prelance');
 
 // ------------------------------------------------------------------------
 // Utilidades
@@ -208,7 +277,7 @@ function pontoDaCasa(sq) {
   const r = el.getBoundingClientRect();
   return { x: r.left + r.width / 2, y: r.top + r.height / 2 };
 }
-function estiloPecas() { return config.estiloPecas || 'unicode'; }
+function estiloPecas() { return normalizarEstilo(config.estiloPecas); }
 
 // ------------------------------------------------------------------------
 // Modo Impostor (auxiliares)
@@ -224,7 +293,12 @@ function emMontagem() {
 }
 /** Visão filtrada do tabuleiro enviada pelo servidor (ou null no clássico). */
 function visaoImpostor() {
+  if (revisao.ativa) return revisao.posicoes[revisao.indice].visao;
   return ehImpostor() ? online.estado.impostor.tabuleiro : null;
+}
+/** Impostor terminado: o servidor já revelou todas as funções. */
+function impostorRevelado() {
+  return ehImpostor() && online.estado.statusSala === 'terminado' && !!online.estado.impostor.revelacao;
 }
 /** Letra da peça como ela APARECE (maiúscula = branca), no formato do motor. */
 function letraDaVisao(v) {
@@ -233,6 +307,7 @@ function letraDaVisao(v) {
 }
 /** Tabuleiro de letras que desenhamos: aparências no Impostor, motor no clássico. */
 function tabuleiroVisivel() {
+  if (revisao.ativa) return revisao.posicoes[revisao.indice].tabuleiro;
   const visao = visaoImpostor();
   return visao ? visao.map(letraDaVisao) : jogo.obterTabuleiro();
 }
@@ -256,8 +331,11 @@ function partidaAcabou() {
 }
 
 function interacaoBloqueada() {
-  if (animando || partidaAcabou() || promocaoPendente) return true;
-  if (!elModalModos.hidden || !elModalCriar.hidden || !elModalConfig.hidden) return true;
+  if (animando || partidaAcabou() || promocaoPendente || revisao.ativa) return true;
+  if (!elModalModos.hidden || !elModalCriar.hidden || !elModalConfig.hidden || !elModalBot.hidden) return true;
+  if (online.espectador) return true;
+  // Na vez do bot só dá para agendar um pré-lance (se estiver ligado).
+  if (modoApp === 'bot' && (bot.pensando || jogo.vez() !== bot.corJogador)) return !emModoPrelance();
   if (online.ativo && online.estado) {
     const st = online.estado.statusSala;
     if (st === 'aguardando' || st === 'escolhendo-cores' || st === 'montando') return true;
@@ -352,6 +430,7 @@ function alternarMudo() {
   config.som = !config.som;
   salvarConfig();
   atualizarControleSom();
+  sincronizarBotoesConfig();
   if (config.som) {
     if (SonsXadrez && SonsXadrez.garantirAudio) SonsXadrez.garantirAudio();
     som('clique');
@@ -376,6 +455,21 @@ function sincronizarBotoesConfig() {
     const chave = btn.getAttribute('data-cfg');
     btn.setAttribute('aria-pressed', String(config[chave] === btn.getAttribute('data-valor')));
   });
+  // Atalhos da aba Opções e o "silenciar" do chat.
+  document.querySelectorAll('[data-estilo-rapido]').forEach((b) => {
+    b.setAttribute('aria-pressed', String(b.getAttribute('data-estilo-rapido') === estiloPecas()));
+  });
+  const somRapido = document.getElementById('btn-som-rapido');
+  if (somRapido) {
+    somRapido.setAttribute('aria-pressed', String(!!config.som));
+    somRapido.textContent = config.som ? '🔊 Som ligado' : '🔇 Som desligado';
+  }
+  for (const id of ['cfg-chat-mudo', 'cfg-chat-mudo-geral']) {
+    const el = document.getElementById(id);
+    if (el) el.checked = !!config.chatMudo;
+  }
+  if (typeof sincronizarCorBot === 'function') sincronizarCorBot();
+  if (typeof sincronizarBotaoPrelance === 'function') sincronizarBotaoPrelance();
   atualizarAmostraPecas();
 }
 
@@ -413,8 +507,14 @@ function irParaInicio() {
 
 function voltarAoInicio() {
   if (online.ativo && socket) {
-    socket.emit('sairSala');
+    socket.emit(online.espectador ? 'pararDeAssistir' : 'sairSala');
   }
+  cancelarPensamentoBot();
+  sairRevisao({ semRender: true });
+  prelance = null;
+  MarcacoesTabuleiro.limpar(marcas);
+  elModalBot.hidden = true;
+  online.espectador = false;
   online.ativo = false;
   online.codigo = null;
   online.token = null;
@@ -494,12 +594,17 @@ function capturadasAtuais() {
   return jogo.pecasCapturadas();
 }
 function ultimoLanceAtual() {
+  if (revisao.ativa) return revisao.posicoes[revisao.indice].ultimo;
   if (online.ativo && online.estado && online.estado.ultimoLance) return online.estado.ultimoLance;
   return jogo.ultimoLance();
 }
 
 function statusEfetivo() {
   if (emMontagem()) return 'montando';
+  if (online.espectador && online.estado && !online.estado.resultado &&
+      (online.estado.statusSala === 'aguardando' || online.estado.statusSala === 'escolhendo-cores')) {
+    return 'aguardando-jogadores';
+  }
   if (online.ativo && online.estado) {
     if (online.estado.resultado) return online.estado.resultado.tipo;
     return online.estado.statusJogo || 'em_andamento';
@@ -519,7 +624,7 @@ function renderizar(opcoes) {
   const ultimo = ultimoLanceAtual();
   const status = statusEfetivo();
   let reiEmXeque = -1;
-  if (status === 'xeque' || status === 'xeque-mate') {
+  if (!revisao.ativa && (status === 'xeque' || status === 'xeque-mate')) {
     // No Impostor o rei em xeque já foi revelado: é a peça com função de rei.
     reiEmXeque = visao
       ? visao.findIndex((v) => v && v.c === jogo.vez() && v.f === 'k')
@@ -532,9 +637,15 @@ function renderizar(opcoes) {
     }
   }
 
+  // Pré-lance some se a partida acabou, se entramos na revisão ou se a opção foi desligada.
+  if (prelance && (partidaAcabou() || revisao.ativa || !config.prelance)) prelance = null;
+  elTabuleiro.classList.toggle('modo-prelance', selecionada !== null && emModoPrelance());
+
   for (const casa of elTabuleiro.children) {
     const sq = Number(casa.dataset.square);
     casa.classList.toggle('selecionada', selecionada === sq || (emMontagem() && selecaoMontagem === sq));
+    casa.classList.toggle('prelance-origem', !!(prelance && prelance.from === sq));
+    casa.classList.toggle('prelance-destino', !!(prelance && prelance.to === sq));
     casa.classList.toggle('em-xeque', reiEmXeque === sq);
     casa.classList.toggle('ultimo-lance', !!(ultimo && (ultimo.from === sq || ultimo.to === sq)));
     casa.classList.toggle('destino-vazio', destinos.get(sq) === 'vazio');
@@ -562,6 +673,16 @@ function renderizar(opcoes) {
     casa.setAttribute('aria-label', rotulo);
   }
   atualizarPainel(status, opcoes && opcoes.capturaRecente);
+  atualizarAvisoPrelance();
+  // Mudou a posição mostrada (lance novo, outra partida, outro ponto da
+  // revisão)? As marcações eram da posição anterior: apagam.
+  const chave = [modoApp, online.codigo || '', revisao.ativa ? 'r' + revisao.indice : 'j', historicoAtual().length].join(':');
+  if (chave !== chaveDasMarcas) {
+    chaveDasMarcas = chave;
+    MarcacoesTabuleiro.limpar(marcas);
+    marcaArrastando = null;
+  }
+  desenharMarcacoes();
 }
 
 /**
@@ -570,13 +691,22 @@ function renderizar(opcoes) {
  *  - peça nossa disfarçada (só nós vemos): selo discreto com a função real.
  * O selo fica fora do elemento .peca, porque ele é redesenhado ao trocar o estilo.
  */
+/** Legenda do painel depois do fim do Impostor (funções reveladas a todos). */
+const LEGENDA_FIM_IMPOSTOR =
+  '<span class="legenda-item"><span class="amostra-selo amostra-selo-final" aria-hidden="true">♛</span> selo dourado: função real da impostora</span>' +
+  '<span class="legenda-item">sem selo: a peça era o que parecia</span>';
+
 function atualizarSeloImpostor(casa, v) {
   let selo = casa.querySelector('.selo-funcao');
   const minha = !!(v && v.c === online.cor);
   const revelada = !!(v && v.r);
-  const disfarcada = !!(minha && v.f && v.f !== v.a && !revelada);
+  // No fim (e na revisão) tudo é público: todo impostor ganha o selo "final".
+  const fim = !!(v && v.f && (revisao.ativa || impostorRevelado()));
+  const impostora = !!(v && v.f && v.f !== v.a);
+  const disfarcada = !!(impostora && !revelada && (minha || fim));
   casa.classList.toggle('peca-revelada', revelada);
-  casa.classList.toggle('peca-disfarcada', disfarcada);
+  casa.classList.toggle('peca-disfarcada', disfarcada && !fim);
+  casa.classList.toggle('peca-impostora-fim', fim && impostora && !revelada);
   if (!v || !v.f || !(revelada || disfarcada)) {
     if (selo) selo.remove();
     return;
@@ -589,8 +719,9 @@ function atualizarSeloImpostor(casa, v) {
   }
   selo.textContent = SIMBOLOS_UNICODE[v.f] || '?';
   selo.classList.toggle('selo-revelado', revelada);
+  selo.classList.toggle('selo-final', fim && !revelada);
   selo.classList.toggle('selo-preta', v.c === 'b');
-  selo.title = (revelada ? 'Revelada: ' : 'Anda como ') + NOMES_FUNCAO[v.f];
+  selo.title = (revelada ? 'Revelada: ' : (fim ? 'Era ' : 'Anda como ')) + NOMES_FUNCAO[v.f];
 }
 
 function nomeDaPeca(peca) {
@@ -606,56 +737,111 @@ function atualizarPainel(status, capturaRecente) {
   elPecaVez.innerHTML = '';
   elPecaVez.appendChild(criarElementoPeca(vezBrancas ? 'K' : 'k', estiloPecas()));
 
-  elStatus.textContent = montarMensagemStatus(status);
-  elStatus.className = 'status-jogo ' + classeDoStatus(status);
+  let textoStatus = montarMensagemStatus(status);
+  if (modoApp === 'bot' && bot.pensando && !partidaAcabou()) textoStatus = '🤖 O bot está pensando…';
+  if (revisao.ativa) textoStatus = '🔍 Revisando — ' + textoStatus;
+  elStatus.textContent = textoStatus;
+  elStatus.className = 'status-jogo ' + classeDoStatus(status) + (modoApp === 'bot' && bot.pensando ? ' pensando' : '');
   const rotuloVariante = online.ativo && online.estado && online.estado.variante === 'impostor' ? ' · Impostor' : '';
-  elModoAtual.textContent = 'Modo: ' + (online.estado && online.estado.rotuloModo ? online.estado.rotuloModo : modoAtual.rotulo) + rotuloVariante;
+  if (modoApp === 'bot') {
+    elModoAtual.textContent = 'Modo: Contra o bot · ' + NOMES_NIVEL[bot.nivel];
+  } else {
+    elModoAtual.textContent = 'Modo: ' + (online.estado && online.estado.rotuloModo ? online.estado.rotuloModo : modoAtual.rotulo) + rotuloVariante;
+  }
   const elLegenda = document.getElementById('legenda-impostor');
-  if (elLegenda) elLegenda.hidden = !ehImpostor();
+  if (elLegenda) {
+    // No fim do Impostor a legenda muda: tudo foi revelado para todos.
+    const fimRevelado = ehImpostor() && (revisao.ativa || impostorRevelado());
+    if (!elLegenda.dataset.original) elLegenda.dataset.original = elLegenda.innerHTML;
+    const html = fimRevelado ? LEGENDA_FIM_IMPOSTOR : elLegenda.dataset.original;
+    if (elLegenda.innerHTML !== html) elLegenda.innerHTML = html;
+    elLegenda.hidden = !ehImpostor() || (online.espectador && !fimRevelado);
+  }
 
-  if (online.ativo && online.cor) {
+  if (online.ativo && online.espectador) {
+    elSuaCor.hidden = false;
+    elSuaCor.textContent = '👁️ Você está assistindo';
+  } else if (online.ativo && online.cor) {
     elSuaCor.hidden = false;
     elSuaCor.textContent = 'Você joga com as ' + (online.cor === 'w' ? 'brancas' : 'pretas');
+  } else if (modoApp === 'bot') {
+    elSuaCor.hidden = false;
+    elSuaCor.textContent = 'Você joga com as ' + (bot.corJogador === 'w' ? 'brancas' : 'pretas');
   } else {
     elSuaCor.hidden = true;
   }
 
+  desenharHistorico();
+
+  const caps = revisao.ativa ? revisao.posicoes[revisao.indice].capturadas : capturadasAtuais();
+  preencherCapturas(elCapBrancas, caps.w || [], capturaRecente);
+  preencherCapturas(elCapPretas, caps.b || [], capturaRecente);
+
+  atualizarBotoesDaPartida();
+  atualizarNomesNaInterface();
+  pintarRelogios();
+}
+
+/** Histórico em duas colunas; depois do fim, cada lance é clicável (revisão). */
+function desenharHistorico() {
   const sans = historicoAtual();
+  const clicavel = podeRevisar();
   elHistorico.innerHTML = '';
+  elHistorico.classList.toggle('clicavel', clicavel);
+  const atual = revisao.ativa ? revisao.indice : -1;
   for (let i = 0; i < sans.length; i += 2) {
     const li = document.createElement('li');
     const num = document.createElement('span');
     num.className = 'num';
     num.textContent = (i / 2 + 1) + '.';
-    const branca = document.createElement('span');
-    branca.className = 'lance';
-    branca.textContent = sans[i];
-    const preta = document.createElement('span');
-    preta.className = 'lance';
-    preta.textContent = sans[i + 1] || '';
-    li.append(num, branca, preta);
+    li.appendChild(num);
+    for (const ply of [i, i + 1]) {
+      const el = document.createElement(clicavel && sans[ply] ? 'button' : 'span');
+      el.className = 'lance';
+      el.textContent = sans[ply] || '';
+      if (clicavel && sans[ply]) {
+        el.type = 'button';
+        // A posição DEPOIS do meio-lance `ply` é a de índice ply + 1.
+        el.dataset.ply = String(ply + 1);
+        el.setAttribute('aria-label', 'Ver a posição depois de ' + sans[ply]);
+      }
+      if (atual === ply + 1) el.classList.add('lance-atual');
+      li.appendChild(el);
+    }
     elHistorico.appendChild(li);
   }
-  if (elHistorico.lastElementChild) elHistorico.lastElementChild.scrollIntoView({ block: 'nearest' });
+  const foco = elHistorico.querySelector('.lance-atual') || elHistorico.lastElementChild;
+  if (foco && !document.getElementById('painel-historico').hidden) foco.scrollIntoView({ block: 'nearest' });
+  const dica = document.getElementById('dica-historico');
+  if (dica) dica.hidden = !clicavel;
+}
 
-  const caps = capturadasAtuais();
-  preencherCapturas(elCapBrancas, caps.w || [], capturaRecente);
-  preencherCapturas(elCapPretas, caps.b || [], capturaRecente);
-
-  const onlineBloqueiaDesfazer = online.ativo;
-  elBtnDesfazer.disabled = onlineBloqueiaDesfazer || historicoAtual().length === 0 || !!fimPorTempo || animando || partidaAcabou();
-  elBtnGirar.disabled = animando;
-
+/**
+ * Mostra só as ações que fazem sentido agora (as secundárias ficam na aba
+ * Opções). Online: Desistir/Empate durante a partida, Revanche no fim.
+ * Local e bot: Novo jogo. Em qualquer modo, Revisar partida no fim.
+ */
+function atualizarBotoesDaPartida() {
   const acabou = partidaAcabou();
-  elBtnRevanche.hidden = !(online.ativo && acabou);
-  atualizarNomesNaInterface();
-  if (online.ativo && online.estado && online.estado.revanche && online.papel) {
+  const jogador = online.ativo && !online.espectador;
+  const emAndamento = online.ativo && online.estado && online.estado.statusSala === 'em_andamento';
+  document.getElementById('btn-desistir').hidden = !(jogador && emAndamento && !acabou);
+  document.getElementById('btn-empate').hidden = !(jogador && emAndamento && !acabou);
+  elBtnRevanche.hidden = !(jogador && acabou);
+  if (jogador && online.estado && online.estado.revanche && online.papel) {
     elBtnRevanche.textContent = online.estado.revanche[online.papel] ? 'Aguardando oponente…' : 'Revanche';
-  } else if (online.ativo && acabou) {
-    elBtnRevanche.textContent = 'Revanche';
   }
+  elBtnRevisar.hidden = !podeRevisar() || revisao.ativa;
+  elBtnNovo.hidden = online.ativo;
+  elBtnNovo.textContent = modoApp === 'bot' ? 'Nova partida contra o bot' : 'Novo jogo';
 
-  pintarRelogios();
+  const local = !online.ativo;
+  elBtnDesfazer.hidden = !local;
+  elBtnDesfazer.disabled = !local || historicoAtual().length === 0 || !!fimPorTempo || animando || partidaAcabou() || revisao.ativa ||
+    (modoApp === 'bot' && historicoAtual().length < 1);
+  elBtnGirar.disabled = animando;
+  const btnInicio = document.getElementById('btn-inicio');
+  btnInicio.textContent = online.espectador ? 'Parar de assistir' : (online.ativo ? 'Sair da sala' : 'Voltar ao início');
 }
 
 function preencherCapturas(el, pecas, capturaRecente) {
@@ -674,6 +860,10 @@ function preencherCapturas(el, pecas, capturaRecente) {
 }
 
 function nomeDoLado(cor) {
+  if (modoApp === 'bot') {
+    if (cor !== bot.corJogador) return '🤖 Bot (' + NOMES_NIVEL[bot.nivel] + ')';
+    return nomeDoUsuario() || 'Você';
+  }
   if (online.ativo && online.estado && online.estado.nomes) {
     const n = sanitizarNome(online.estado.nomes[cor]);
     if (n) return n;
@@ -1062,27 +1252,35 @@ function pecaDaVezEh(peca, cor) {
 }
 
 function corPermitida() {
-  if (online.ativo) return online.cor;
+  if (online.ativo) return online.cor; // espectador: null (não move nada)
+  if (modoApp === 'bot') return bot.corJogador;
   return jogo.vez();
 }
 
 function selecionarCasa(sq, opcoes) {
   const peca = tabuleiroVisivel()[sq];
   const cor = corPermitida();
-  if (!pecaDaVezEh(peca, cor) || (online.ativo && jogo.vez() !== online.cor)) {
+  const pre = emModoPrelance();
+  if (!pecaDaVezEh(peca, cor) || (!pre && online.ativo && jogo.vez() !== online.cor)) {
     limparSelecao();
     renderizar();
     if (opcoes && opcoes.somIlegalSeFalhar) som('ilegal');
     return false;
   }
   selecionada = sq;
-  lancesDaSelecao = lancesDaCasa(sq);
+  lancesDaSelecao = lancesParaSelecao(sq);
   renderizar();
   som('selecionar');
   return true;
 }
 
 async function tentarMover(de, para, origemPixel) {
+  // Vez do adversário: em vez de jogar, agenda o pré-lance.
+  if (emModoPrelance()) {
+    const ok = destinosPrelance(de).some((l) => l.to === para);
+    if (ok) definirPrelance(de, para);
+    return ok;
+  }
   const candidatas = lancesDaCasa(de).filter((l) => l.to === para);
   if (!candidatas.length) return false;
   if (candidatas[0].promotion) {
@@ -1124,6 +1322,8 @@ async function executarLanceLocal(entrada, origemPixel) {
     animando = false;
     renderizar({ capturaRecente: feito.captured });
   }
+  // Contra o bot: depois do lance do jogador, é a vez do bot pensar.
+  if (modoApp === 'bot' && !partidaAcabou() && jogo.vez() !== bot.corJogador) pedirLanceBot();
   return true;
 }
 
@@ -1151,6 +1351,7 @@ function noClique(evento) {
   const sq = Number(evento.currentTarget.dataset.square);
   if (emMontagem()) { cliqueMontagem(sq); return; }
   if (interacaoBloqueada()) return;
+  if (emModoPrelance()) { cliquePrelance(sq); return; }
   if (selecionada === null) { selecionarCasa(sq); return; }
   if (selecionada === sq) { limparSelecao(); renderizar(); return; }
   const legal = lancesDaSelecao.some((l) => l.to === sq);
@@ -1163,7 +1364,7 @@ function noMouseDown(evento) {
   const sq = Number(evento.currentTarget.dataset.square);
   const peca = tabuleiroVisivel()[sq];
   if (!pecaDaVezEh(peca, corPermitida())) return;
-  if (online.ativo && jogo.vez() !== online.cor) return;
+  if (online.ativo && jogo.vez() !== online.cor && !emModoPrelance()) return;
   arraste = { from: sq, peca: peca, iniciado: false, consumido: false, x: evento.clientX, y: evento.clientY };
 }
 function noTouchStart(evento) {
@@ -1172,7 +1373,7 @@ function noTouchStart(evento) {
   const sq = Number(evento.currentTarget.dataset.square);
   const peca = tabuleiroVisivel()[sq];
   if (!pecaDaVezEh(peca, corPermitida())) return;
-  if (online.ativo && jogo.vez() !== online.cor) return;
+  if (online.ativo && jogo.vez() !== online.cor && !emModoPrelance()) return;
   arraste = { from: sq, peca: peca, iniciado: false, consumido: false, x: t.clientX, y: t.clientY, toque: true };
 }
 
@@ -1180,7 +1381,7 @@ function iniciarArrasteVisual() {
   if (!arraste || arraste.iniciado) return;
   arraste.iniciado = true;
   selecionada = arraste.from;
-  lancesDaSelecao = lancesDaCasa(arraste.from);
+  lancesDaSelecao = lancesParaSelecao(arraste.from);
   renderizar();
   const pecaEl = elTabuleiro.querySelector('[data-square="' + arraste.from + '"] .peca');
   if (pecaEl) pecaEl.classList.add('arrastando');
@@ -1230,8 +1431,12 @@ function encerrarArraste(x, y) {
     renderizar();
     return;
   }
+  const eraPrelance = emModoPrelance();
   tentarMover(origem, destino, ponto).then((ok) => {
-    if (!ok) { som('ilegal'); renderizar(); }
+    if (ok) return;
+    if (eraPrelance) { cancelarPrelance(); return; } // soltou fora: cancela em silêncio
+    som('ilegal');
+    renderizar();
   });
 }
 function encerrarFantasma() {
@@ -1260,6 +1465,258 @@ document.addEventListener('touchcancel', () => {
   arraste = null;
   renderizar();
 });
+
+// ------------------------------------------------------------------------
+// Pré-lance (online e contra o bot)
+// ------------------------------------------------------------------------
+
+/**
+ * Dá para agendar um pré-lance agora? Só na vez do ADVERSÁRIO, com a opção
+ * ligada, numa partida online em andamento (jogador, não espectador) ou
+ * contra o bot. No modo local (dois no mesmo PC) não existe pré-lance.
+ */
+function emModoPrelance() {
+  if (!config.prelance || revisao.ativa || promocaoPendente || partidaAcabou()) return false;
+  if (modoApp === 'bot') return bot.pensando || jogo.vez() !== bot.corJogador;
+  if (online.ativo && !online.espectador && online.cor && online.estado) {
+    return online.estado.statusSala === 'em_andamento' && jogo.vez() !== online.cor;
+  }
+  return false;
+}
+
+/**
+ * Destinos de pré-lance da nossa peça em `sq`, no formato de `lancesDaCasa`
+ * ({to, captured}). No Impostor usamos a FUNÇÃO real da peça.
+ */
+function destinosPrelance(sq) {
+  const cor = corPermitida();
+  let tipo = null, jaMoveu = false;
+  const visao = visaoImpostor();
+  if (visao) {
+    const v = visao[sq];
+    if (!v || v.c !== cor || !v.f) return [];
+    tipo = v.f;
+    jaMoveu = !!v.m;
+  } else {
+    const peca = jogo.obterTabuleiro()[sq];
+    if (!pecaDaVezEh(peca, cor)) return [];
+    tipo = peca.toLowerCase();
+  }
+  return PreLance.destinosGeometricos(tipo, cor, sq, { jaMoveu: jaMoveu })
+    .map((to) => ({ to: to, captured: false }));
+}
+
+/** Lances que a seleção mostra: normais na nossa vez, pré-lance na do adversário. */
+function lancesParaSelecao(sq) {
+  return emModoPrelance() ? destinosPrelance(sq) : lancesDaCasa(sq);
+}
+
+/** Clique no tabuleiro durante a vez do adversário. */
+function cliquePrelance(sq) {
+  if (selecionada === null) {
+    // Clique em casa vazia ou peça do adversário: cancela o pré-lance.
+    if (!selecionarCasa(sq)) cancelarPrelance();
+    return;
+  }
+  if (selecionada === sq) { limparSelecao(); renderizar(); return; }
+  if (lancesDaSelecao.some((l) => l.to === sq)) { definirPrelance(selecionada, sq); return; }
+  if (!selecionarCasa(sq)) cancelarPrelance();
+}
+
+function definirPrelance(de, para) {
+  prelance = { from: de, to: para };
+  limparSelecao();
+  renderizar();
+  som('selecionar');
+}
+
+function cancelarPrelance() {
+  const tinha = !!prelance || selecionada !== null;
+  prelance = null;
+  limparSelecao();
+  if (tinha) renderizar();
+}
+
+function atualizarAvisoPrelance() {
+  if (!elAvisoPrelance) return;
+  elAvisoPrelance.hidden = !prelance;
+  if (prelance) {
+    elAvisoPrelance.textContent = '⚡ Pré-lance: ' + casaParaAlgebrica(prelance.from) + ' → ' +
+      casaParaAlgebrica(prelance.to) + ' (botão direito cancela)';
+  }
+}
+
+/** Agora é a nossa vez de verdade (para executar o pré-lance)? */
+function nossaVezDeVerdade() {
+  if (partidaAcabou() || revisao.ativa) return false;
+  if (modoApp === 'bot') return !bot.pensando && jogo.vez() === bot.corJogador;
+  if (online.ativo && !online.espectador && online.estado) {
+    return online.estado.statusSala === 'em_andamento' && jogo.vez() === online.cor;
+  }
+  return false;
+}
+
+/**
+ * Chamado logo depois do lance do adversário. Se houver pré-lance e ele for
+ * legal na nova posição, ele é jogado na hora (com dama na promoção). Se não
+ * for, é cancelado em silêncio. No relógio, o tempo gasto é só o de enviar.
+ */
+async function executarPrelanceSePossivel() {
+  // Uma seleção feita na vez do adversário mostrava destinos de pré-lance:
+  // agora que é a nossa vez, troca pelos lances legais de verdade.
+  if (selecionada !== null && nossaVezDeVerdade()) {
+    if (pecaDaVezEh(tabuleiroVisivel()[selecionada], corPermitida())) lancesDaSelecao = lancesDaCasa(selecionada);
+    else limparSelecao();
+  }
+  if (!prelance) { renderizar(); return; }
+  if (!nossaVezDeVerdade()) { renderizar(); return; }
+  const p = prelance;
+  prelance = null;
+  limparSelecao();
+  const lance = pecaDaVezEh(tabuleiroVisivel()[p.from], corPermitida())
+    ? PreLance.resolverPrelance(p, lancesDaCasa(p.from))
+    : null;
+  if (!lance) { renderizar(); return; } // ilegal agora: cancela em silêncio
+  if (online.ativo) {
+    online._prelanceEnviado = true;
+    enviarLanceOnline(lance, null);
+  } else {
+    await executarLanceLocal(lance);
+  }
+}
+
+function sincronizarBotaoPrelance() {
+  const b = document.getElementById('btn-prelance');
+  if (!b) return;
+  b.setAttribute('aria-pressed', String(!!config.prelance));
+  b.textContent = config.prelance ? '⚡ Pré-lance: ligado' : '⚡ Pré-lance: desligado';
+}
+document.getElementById('btn-prelance').addEventListener('click', () => {
+  config.prelance = !config.prelance;
+  salvarConfig();
+  if (!config.prelance) cancelarPrelance();
+  sincronizarBotaoPrelance();
+  toast(config.prelance ? 'Pré-lance ligado.' : 'Pré-lance desligado.');
+  renderizar();
+});
+
+// ------------------------------------------------------------------------
+// Marcações: setas e círculos (botão direito; toque longo no celular)
+// ------------------------------------------------------------------------
+
+function desenharMarcacoes() {
+  MarcacoesTabuleiro.desenhar(elCamadaMarcas, marcas, brancasEmbaixo, marcaArrastando);
+  const n = MarcacoesTabuleiro.quantidade(marcas);
+  const rapido = document.getElementById('btn-limpar-marcas-rapido');
+  if (rapido) rapido.hidden = n === 0;
+  const geral = document.getElementById('btn-limpar-marcas');
+  if (geral) geral.disabled = n === 0;
+}
+
+function limparMarcacoes() {
+  if (!MarcacoesTabuleiro.quantidade(marcas) && !marcaArrastando) return;
+  MarcacoesTabuleiro.limpar(marcas);
+  marcaArrastando = null;
+  desenharMarcacoes();
+}
+
+// O menu do botão direito não abre em cima do tabuleiro.
+elTabuleiro.addEventListener('contextmenu', (e) => e.preventDefault());
+elCamadaMarcas.addEventListener('contextmenu', (e) => e.preventDefault());
+
+// Botão esquerdo comum no tabuleiro: limpa as marcações (como no Lichess).
+// Botão direito: cancela o pré-lance (se houver) ou começa uma marcação.
+elTabuleiro.addEventListener('mousedown', (e) => {
+  if (e.button === 0) { limparMarcacoes(); return; }
+  if (e.button !== 2) return;
+  e.preventDefault();
+  if (prelance || (selecionada !== null && emModoPrelance())) { cancelarPrelance(); return; }
+  const casa = e.target.closest('.casa');
+  if (!casa) return;
+  const sq = Number(casa.dataset.square);
+  marcaArrastando = { de: sq, para: sq, cor: MarcacoesTabuleiro.corPorModificadores(e) };
+}, true);
+document.addEventListener('mousemove', (e) => {
+  if (!marcaArrastando) return;
+  const sq = casaSobPonteiro(e.clientX, e.clientY);
+  if (sq !== null && sq !== marcaArrastando.para) {
+    marcaArrastando.para = sq;
+    desenharMarcacoes(); // prévia da seta
+  }
+});
+document.addEventListener('mouseup', (e) => {
+  if (e.button !== 2 || !marcaArrastando) return;
+  const m = marcaArrastando;
+  marcaArrastando = null;
+  const fim = casaSobPonteiro(e.clientX, e.clientY);
+  if (fim !== null) {
+    // A cor vale pelas teclas seguradas ao SOLTAR (dá para escolher no meio).
+    const cor = (e.shiftKey || e.ctrlKey || e.altKey || e.metaKey) ? MarcacoesTabuleiro.corPorModificadores(e) : m.cor;
+    MarcacoesTabuleiro.alternarSeta(marcas, m.de, fim, cor);
+  }
+  desenharMarcacoes();
+});
+
+// Celular: segurar o dedo ~0,5 s numa casa marca (ou desmarca) um círculo.
+// Um toque curto comum limpa as marcações, como o clique esquerdo.
+const TOQUE_LONGO_MS = 500;
+let toqueLongo = null;
+elTabuleiro.addEventListener('touchstart', (e) => {
+  if (e.touches.length !== 1) { if (toqueLongo) clearTimeout(toqueLongo.timer); toqueLongo = null; return; }
+  const t = e.touches[0];
+  const casa = e.target.closest('.casa');
+  if (!casa) return;
+  const sq = Number(casa.dataset.square);
+  const estado = { sq: sq, x: t.clientX, y: t.clientY, disparou: false, timer: 0 };
+  estado.timer = setTimeout(() => {
+    estado.disparou = true;
+    // Se o dedo estava numa peça, o arraste dela é cancelado.
+    if (arraste && !arraste.iniciado) arraste = null;
+    MarcacoesTabuleiro.alternarCirculo(marcas, sq, 'verde');
+    desenharMarcacoes();
+    if (navigator.vibrate) { try { navigator.vibrate(15); } catch (err) { /* sem vibração */ } }
+  }, TOQUE_LONGO_MS);
+  toqueLongo = estado;
+}, { capture: true, passive: true });
+document.addEventListener('touchmove', (e) => {
+  if (!toqueLongo || toqueLongo.disparou) return;
+  const t = e.touches[0];
+  if (!t) return;
+  const dx = t.clientX - toqueLongo.x, dy = t.clientY - toqueLongo.y;
+  if (dx * dx + dy * dy > 100) { clearTimeout(toqueLongo.timer); toqueLongo = null; }
+}, { passive: true });
+elTabuleiro.addEventListener('touchend', (e) => {
+  if (!toqueLongo) return;
+  const estado = toqueLongo;
+  toqueLongo = null;
+  clearTimeout(estado.timer);
+  if (estado.disparou) {
+    // O toque longo não vira clique (não seleciona nem move peça).
+    if (e.cancelable) e.preventDefault();
+    engolirProximoClique();
+  } else {
+    limparMarcacoes();
+  }
+}, { capture: true, passive: false });
+elTabuleiro.addEventListener('touchcancel', () => {
+  if (toqueLongo) clearTimeout(toqueLongo.timer);
+  toqueLongo = null;
+}, true);
+
+let engolirClique = false;
+function engolirProximoClique() {
+  engolirClique = true;
+  setTimeout(() => { engolirClique = false; }, 450);
+}
+elTabuleiro.addEventListener('click', (e) => {
+  if (!engolirClique) return;
+  engolirClique = false;
+  e.stopPropagation();
+  e.preventDefault();
+}, true);
+
+document.getElementById('btn-limpar-marcas').addEventListener('click', limparMarcacoes);
+document.getElementById('btn-limpar-marcas-rapido').addEventListener('click', limparMarcacoes);
 
 // ------------------------------------------------------------------------
 // Montagem do modo Impostor
@@ -1297,7 +1754,8 @@ function cliqueMontagem(sq) {
 function atualizarBarraMontagem() {
   const el = document.getElementById('barra-montagem');
   if (!el) return;
-  const ativa = emMontagem();
+  // O espectador não monta nada: vê só o tabuleiro e o status.
+  const ativa = emMontagem() && !online.espectador;
   el.hidden = !ativa;
   // Classe usada no CSS para encolher o tabuleiro e caber a barra (telas largas).
   elTelaJogo.classList.toggle('em-montagem', ativa);
@@ -1342,31 +1800,151 @@ function abrirMenuModosLocal() {
   som('menu');
 }
 
-function iniciarPartidaLocal(idModo) {
-  const modo = MODOS[idModo] || MODOS.livre;
+/**
+ * Começa uma partida no navegador: local (dois jogadores) ou contra o bot.
+ * @param {string} idModo  tempo (livre, 10+0, 3+0); contra o bot é sempre livre
+ * @param {{nivel:string, cor:string}} [contraBot]  se informado, um lado é o bot
+ */
+function iniciarPartidaLocal(idModo, contraBot) {
+  const modo = contraBot ? MODOS.livre : (MODOS[idModo] || MODOS.livre);
   modoAtual = modo;
-  modoApp = 'local';
+  modoApp = contraBot ? 'bot' : 'local';
+  cancelarPensamentoBot();
+  sairRevisao({ semRender: true });
   online.ativo = false;
   online.estado = null;
+  online.espectador = false;
   fecharPromocao();
   elModalModos.hidden = true;
+  elModalBot.hidden = true;
   elFaixaOnline.hidden = true;
   elOverlayEspera.hidden = true;
   promocaoPendente = null;
   animando = false;
   document.querySelectorAll('.peca-voadora').forEach((el) => el.remove());
   jogo.resetar();
-  brancasEmbaixo = true;
+  prelance = null;
   limparSelecao();
   partidaIniciada = true;
   fimPorTempo = null;
-  elSubtitulo.textContent = 'Dois jogadores no mesmo computador';
+  if (contraBot) {
+    bot.nivel = NOMES_NIVEL[contraBot.nivel] ? contraBot.nivel : 'medio';
+    let cor = contraBot.cor;
+    if (cor === 'aleatoria') cor = Math.random() < 0.5 ? 'w' : 'b';
+    bot.corJogador = cor === 'b' ? 'b' : 'w';
+    brancasEmbaixo = bot.corJogador === 'w';
+    elSubtitulo.textContent = 'Contra o bot · ' + NOMES_NIVEL[bot.nivel];
+  } else {
+    brancasEmbaixo = true;
+    elSubtitulo.textContent = 'Dois jogadores no mesmo computador';
+  }
   mostrarTela('jogo');
+  atualizarAbasVisiveis();
   criarTabuleiro();
   iniciarRelogiosDoModo(modo);
   renderizar();
   som('inicio');
+  // O bot de brancas abre a partida.
+  if (modoApp === 'bot' && bot.corJogador === 'b') pedirLanceBot();
 }
+
+// ------------------------------------------------------------------------
+// Contra o bot (o cálculo roda num Web Worker: a interface não trava)
+// ------------------------------------------------------------------------
+
+/** Respostas pendentes do Worker: id do pedido → função que recebe o resultado. */
+const respostasBot = new Map();
+
+function garantirWorkerBot() {
+  if (bot.worker !== null) return bot.worker || null;
+  try {
+    bot.worker = new Worker('bot-worker.js');
+    bot.worker.onmessage = (e) => {
+      const r = e.data || {};
+      const fn = respostasBot.get(r.id);
+      respostasBot.delete(r.id);
+      if (fn) fn(r);
+    };
+    bot.worker.onerror = () => {
+      // Sem Worker (ex.: arquivo aberto direto do disco): calcula aqui mesmo.
+      bot.worker = false;
+      for (const [id, fn] of respostasBot) {
+        respostasBot.delete(id);
+        fn(null);
+      }
+    };
+  } catch (e) {
+    bot.worker = false;
+  }
+  return bot.worker || null;
+}
+
+/** Invalida qualquer resposta do bot que ainda esteja a caminho. */
+function cancelarPensamentoBot() {
+  bot.idPedido += 1;
+  bot.pensando = false;
+}
+
+/** Pede ao bot o próximo lance e joga quando ele responder. */
+function pedirLanceBot() {
+  if (modoApp !== 'bot' || partidaAcabou() || jogo.vez() === bot.corJogador) return;
+  const id = ++bot.idPedido;
+  bot.pensando = true;
+  renderizar();
+  const fen = jogo.fen();
+  const inicio = performance.now();
+
+  const aoResponder = async (r) => {
+    if (id !== bot.idPedido || modoApp !== 'bot') return; // pedido antigo
+    if (!r) {
+      // O Worker falhou: calcula na thread principal (com tempo menor).
+      r = BotXadrez.escolherLance(fen, bot.nivel, { tempoMs: 1200 });
+    }
+    // Um respiro mínimo, para o lance do bot não "piscar" na tela.
+    const resta = 380 - (performance.now() - inicio);
+    if (resta > 0) await esperar(resta);
+    while (animando) await esperar(30);
+    if (id !== bot.idPedido || modoApp !== 'bot') return;
+    bot.pensando = false;
+    if (!r || !r.lance) { renderizar(); return; }
+    await executarLanceLocal(r.lance);
+    await executarPrelanceSePossivel();
+  };
+
+  const w = garantirWorkerBot();
+  if (w) {
+    respostasBot.set(id, aoResponder);
+    w.postMessage({ id: id, fen: fen, nivel: bot.nivel, tempoMs: 1800 });
+  } else {
+    setTimeout(() => aoResponder(null), 30);
+  }
+}
+
+/** Seleção de cor (♔ ♚ 🎲) nos cartões do bot; fica salva na configuração. */
+function sincronizarCorBot() {
+  document.querySelectorAll('[data-cor-bot]').forEach((b) => {
+    b.setAttribute('aria-pressed', String(b.getAttribute('data-cor-bot') === (config.botCor || 'w')));
+  });
+  document.querySelectorAll('[data-nivel]').forEach((b) => {
+    b.classList.toggle('nivel-lembrado', b.getAttribute('data-nivel') === config.botNivel);
+  });
+}
+document.addEventListener('click', (e) => {
+  const corBtn = e.target.closest('[data-cor-bot]');
+  if (corBtn) {
+    config.botCor = corBtn.getAttribute('data-cor-bot');
+    salvarConfig();
+    sincronizarCorBot();
+    return;
+  }
+  const nivelBtn = e.target.closest('[data-nivel]');
+  if (nivelBtn) {
+    config.botNivel = nivelBtn.getAttribute('data-nivel');
+    salvarConfig();
+    iniciarPartidaLocal('livre', { nivel: config.botNivel, cor: config.botCor || 'w' });
+  }
+});
+document.getElementById('btn-bot-cancelar').addEventListener('click', () => { elModalBot.hidden = true; });
 
 // ------------------------------------------------------------------------
 // Partida online
@@ -1425,16 +2003,42 @@ function aplicarEstadoOnline(estado) {
   if (estado.resultado) fimPorTempo = estado.resultado;
   else fimPorTempo = null;
 
+  if (estado.statusSala !== 'em_andamento') prelance = null;
+  // Nova partida na mesma sala (revanche): sai da revisão da anterior.
+  if (revisao.ativa && estado.statusSala !== 'terminado') sairRevisao({ semRender: true });
+
   atualizarAvisoConexao(estado);
   atualizarOverlaysSala(estado);
   atualizarBarraMontagem();
+  atualizarEspectadores(estado.espectadores || 0);
   document.getElementById('texto-codigo').textContent = estado.codigo || '-----';
-  if (online.ativo) elSubtitulo.textContent = 'Partida online' + (estado.variante === 'impostor' ? ' · modo Impostor 🎭' : '');
+  if (online.ativo) {
+    elSubtitulo.textContent = (online.espectador ? '👁️ Assistindo · ' : '') + 'Partida online' +
+      (estado.variante === 'impostor' ? ' · modo Impostor 🎭' : '');
+  }
+}
+
+/** Contador "👁️ N" na faixa da sala (jogadores e espectadores veem). */
+function atualizarEspectadores(n) {
+  if (online.estado) online.estado.espectadores = n;
+  const el = document.getElementById('contador-espectadores');
+  const num = document.getElementById('numero-espectadores');
+  if (num) num.textContent = String(n);
+  if (el) {
+    el.hidden = !(online.ativo && n > 0);
+    el.title = n === 1 ? '1 pessoa assistindo' : n + ' pessoas assistindo';
+  }
+  const selo = document.getElementById('selo-assistindo');
+  if (selo) selo.hidden = !online.espectador;
 }
 
 function oponenteEstaDesconectado(estado) {
   if (!estado || !estado.conectados) return false;
   if (estado.statusSala === 'aguardando') return false;
+  if (online.espectador) {
+    // Para quem assiste, "desconectado" é qualquer um dos dois jogadores.
+    return estado.conectados.anfitriao === false || (!!estado.nomes.convidado && estado.conectados.convidado === false);
+  }
   if (online.papel) {
     const op = online.papel === 'anfitriao' ? 'convidado' : 'anfitriao';
     if (typeof estado.conectados[op] === 'boolean') return !estado.conectados[op];
@@ -1448,12 +2052,21 @@ function oponenteEstaDesconectado(estado) {
 
 function atualizarAvisoConexao(estado) {
   elAvisoConexao.hidden = !oponenteEstaDesconectado(estado);
+  elAvisoConexao.textContent = online.espectador
+    ? 'Um jogador desconectou — aguardando reconexão…'
+    : 'Oponente desconectado — aguardando reconexão…';
 }
 
 function atualizarOverlaysSala(estado) {
   const st = estado && estado.statusSala;
   online.aguardando = st === 'aguardando';
   online.escolhendoCores = st === 'escolhendo-cores';
+  if (online.espectador) {
+    // O espectador não convida nem escolhe cores: só o status no painel.
+    elOverlayEspera.hidden = true;
+    if (elOverlayCores) elOverlayCores.hidden = true;
+    return;
+  }
   elOverlayEspera.hidden = !online.aguardando;
   if (online.aguardando && estado && estado.codigo) {
     document.getElementById('codigo-espera').textContent = estado.codigo;
@@ -1470,7 +2083,7 @@ function atualizarOverlaysSala(estado) {
 }
 
 function mostrarMenuCores(estado, sugestao, revanche) {
-  if (!elOverlayCores) return;
+  if (!elOverlayCores || online.espectador) return;
   elOverlayEspera.hidden = true;
   online.aguardando = false;
   online.escolhendoCores = true;
@@ -1535,7 +2148,10 @@ function aplicarCoresEComecar(dados) {
 }
 
 function entrarNaInterfaceOnline(dados) {
+  cancelarPensamentoBot();
+  sairRevisao({ semRender: true });
   online.ativo = true;
+  online.espectador = false;
   online.codigo = dados.codigo;
   online.token = dados.token;
   online.papel = dados.papel || online.papel;
@@ -1548,14 +2164,70 @@ function entrarNaInterfaceOnline(dados) {
   elFaixaOnline.hidden = false;
   elSubtitulo.textContent = 'Partida online';
   mostrarTela('jogo');
+  atualizarAbasVisiveis();
   criarTabuleiro();
+  restaurarChat(dados.chat);
   aplicarEstadoOnline(dados.estado);
   renderizar();
 }
 
+/** Entra na sala só para assistir (sem cor e sem token). */
+function entrarComoEspectador(dados) {
+  cancelarPensamentoBot();
+  sairRevisao({ semRender: true });
+  online.ativo = true;
+  online.espectador = true;
+  online.codigo = dados.codigo;
+  online.token = null;
+  online.cor = null;
+  online.papel = null;
+  modoApp = 'online';
+  partidaIniciada = true;
+  brancasEmbaixo = true;
+  elFaixaOnline.hidden = false;
+  mostrarTela('jogo');
+  atualizarAbasVisiveis();
+  criarTabuleiro();
+  restaurarChat(dados.chat);
+  aplicarEstadoOnline(dados.estado);
+  renderizar();
+  som('inicio');
+  toast('👁️ Você está assistindo. Só os jogadores mexem nas peças.');
+}
+
+/** Pede ao servidor para assistir a sala `codigo`. */
+function assistirSala(codigo) {
+  const c = String(codigo || '').toUpperCase().trim();
+  if (!c) return;
+  emitirQuandoPronto('assistirSala', { codigo: c, nome: nomeDoUsuario() || undefined });
+}
+
 function ligarEventosSocket(s) {
   s.on('connect_error', () => toast('Não foi possível conectar ao servidor.'));
-  s.on('erro', (d) => toast((d && d.mensagem) || 'Erro de conexão.'));
+  // Se a conexão cair e voltar sozinha, volta para a mesma sala.
+  s.on('connect', () => {
+    if (!s._jaConectou) { s._jaConectou = true; return; }
+    if (!online.ativo || !online.codigo) return;
+    if (online.espectador) s.emit('assistirSala', { codigo: online.codigo, nome: nomeDoUsuario() || undefined });
+    else if (online.token) s.emit('reconectar', { codigo: online.codigo, token: online.token, nome: nomeDoUsuario() });
+  });
+  s.on('erro', async (d) => {
+    const msg = (d && d.mensagem) || 'Erro de conexão.';
+    if (d && d.podeAssistir && d.codigo) {
+      // Sala cheia (ou partida já encerrada): oferece entrar como espectador.
+      const ok = await confirmar(msg, 'Quer assistir a esta partida como espectador?');
+      if (ok) assistirSala(d.codigo);
+      return;
+    }
+    toast(msg);
+  });
+  s.on('entrouComoEspectador', (d) => entrarComoEspectador(d));
+  s.on('espectadores', (d) => {
+    if (!online.ativo || !d) return;
+    atualizarEspectadores(Number(d.quantidade) || 0);
+  });
+  s.on('chatMensagem', (m) => adicionarMensagemChat(m, true));
+  s.on('chatRecusado', (d) => toast((d && d.motivo) || 'Mensagem não enviada.'));
   s.on('entrouSala', (d) => {
     entrarNaInterfaceOnline(d);
     /* O som de início só toca quando as cores são definidas (coresDefinidas). */
@@ -1584,6 +2256,7 @@ function ligarEventosSocket(s) {
     const origemPixel = online._origemPixel;
     online._origemPixel = null;
     online._esperandoLance = null;
+    online._prelanceEnviado = false;
     animando = true;
     if (lance.promotion) som('promocao');
     else if (lance.castle) som('roque');
@@ -1604,10 +2277,21 @@ function ligarEventosSocket(s) {
     const st = statusEfetivo();
     if (st === 'xeque') som('xeque');
     else if (st === 'xeque-mate' || String(st).indexOf('empate') === 0 || st === 'tempo' || st === 'desistencia') som('fim');
+    // Foi o lance do adversário? Então sai o nosso pré-lance (se houver).
+    if (!online.espectador && jogo.vez() === online.cor) executarPrelanceSePossivel();
   });
   s.on('lanceIlegal', (d) => {
     online._origemPixel = null;
     online._esperandoLance = null;
+    // Pré-lance recusado pelo servidor (ex.: no Impostor, deixaria o rei em
+    // xeque): cancela em silêncio, sem som nem aviso.
+    const eraPrelance = online._prelanceEnviado;
+    online._prelanceEnviado = false;
+    if (eraPrelance) {
+      if (online.estado) aplicarEstadoOnline(online.estado);
+      renderizar();
+      return;
+    }
     som('ilegal');
     toast((d && d.motivo) || 'Lance ilegal.');
     if (online.estado) aplicarEstadoOnline(online.estado);
@@ -1625,7 +2309,9 @@ function ligarEventosSocket(s) {
   });
   s.on('propostaEmpate', (d) => {
     aplicarEstadoOnline(d.estado);
-    if (d.de !== online.cor) {
+    if (online.espectador) {
+      toast('🤝 As ' + (d.de === 'w' ? 'brancas' : 'pretas') + ' propuseram empate.');
+    } else if (d.de !== online.cor) {
       elModalEmpate.hidden = false;
       som('menu');
     } else {
@@ -1635,7 +2321,8 @@ function ligarEventosSocket(s) {
   s.on('empateRecusado', (d) => {
     aplicarEstadoOnline(d.estado);
     elModalEmpate.hidden = true;
-    if (d.por !== online.cor) toast('O oponente recusou o empate.');
+    if (online.espectador) toast('O empate foi recusado.');
+    else if (d.por !== online.cor) toast('O oponente recusou o empate.');
   });
   s.on('revancheIniciada', (d) => {
     // Compatibilidade: a revanche agora reabre o menu de cores (escolherCores).
@@ -1679,6 +2366,326 @@ function ligarEventosSocket(s) {
 // ------------------------------------------------------------------------
 
 // ------------------------------------------------------------------------
+// Subabas do painel (Partida / Histórico / Chat / Opções)
+// ------------------------------------------------------------------------
+
+let abaAtual = 'partida';
+
+function mostrarAba(nome) {
+  const botao = document.querySelector('.aba[data-aba="' + nome + '"]');
+  if (!botao || botao.hidden) nome = 'partida';
+  abaAtual = nome;
+  document.querySelectorAll('.aba').forEach((b) => {
+    const ativa = b.getAttribute('data-aba') === nome;
+    b.setAttribute('aria-selected', String(ativa));
+    b.tabIndex = ativa ? 0 : -1;
+  });
+  document.querySelectorAll('.painel-aba').forEach((p) => {
+    p.hidden = p.id !== 'painel-' + nome;
+  });
+  if (nome === 'chat') zerarNaoLidas();
+  if (nome === 'historico') {
+    const foco = elHistorico.querySelector('.lance-atual') || elHistorico.lastElementChild;
+    if (foco) foco.scrollIntoView({ block: 'nearest' });
+  }
+}
+
+/** O chat só existe nas partidas online. */
+function atualizarAbasVisiveis() {
+  const abaChat = document.getElementById('aba-chat');
+  abaChat.hidden = !online.ativo;
+  document.getElementById('painel-chat').classList.toggle('so-leitura', !!online.espectador);
+  const aviso = document.getElementById('chat-aviso');
+  aviso.hidden = !online.espectador;
+  aviso.textContent = online.espectador ? 'Espectadores só leem o chat.' : '';
+  document.querySelectorAll('[data-chat-id]').forEach((b) => { b.disabled = !!online.espectador; });
+  mostrarAba(abaChat.hidden && abaAtual === 'chat' ? 'partida' : abaAtual);
+}
+
+document.querySelector('.abas').addEventListener('click', (e) => {
+  const b = e.target.closest('.aba');
+  if (b) mostrarAba(b.getAttribute('data-aba'));
+});
+// Teclado nas abas: setas esquerda/direita trocam de aba (padrão ARIA).
+document.querySelector('.abas').addEventListener('keydown', (e) => {
+  if (e.key !== 'ArrowLeft' && e.key !== 'ArrowRight') return;
+  const abas = Array.from(document.querySelectorAll('.aba')).filter((b) => !b.hidden);
+  const i = abas.findIndex((b) => b.getAttribute('data-aba') === abaAtual);
+  const prox = abas[(i + (e.key === 'ArrowRight' ? 1 : abas.length - 1)) % abas.length];
+  mostrarAba(prox.getAttribute('data-aba'));
+  prox.focus();
+  e.preventDefault();
+  e.stopPropagation();
+});
+
+// ------------------------------------------------------------------------
+// Revisar partida (qualquer modo, depois do fim)
+// ------------------------------------------------------------------------
+
+/** Dá para revisar? Só com a partida terminada e (no Impostor) já revelada. */
+function podeRevisar() {
+  if (!partidaIniciada || modoApp === 'inicio' || !partidaAcabou()) return false;
+  if (!historicoAtual().length) return false;
+  if (ehImpostor()) return impostorRevelado();
+  return true;
+}
+
+/** Lista dos lances jogados como {from, to, promotion}, em qualquer modo. */
+function lancesParaRevisao() {
+  if (online.ativo && online.estado) return online.estado.lances || [];
+  return jogo.pgn.map((l) => ({ from: l.from, to: l.to, promotion: l.promotion }));
+}
+
+/**
+ * Refaz a partida do início, guardando uma "foto" depois de cada meio-lance.
+ * No Impostor usamos as funções reveladas pelo servidor no fim: cada foto tem
+ * a visão completa (aparência + função real), e o selo mostra quem era quem.
+ */
+function construirPosicoesRevisao() {
+  const lances = lancesParaRevisao();
+  const posicoes = [];
+  if (ehImpostor()) {
+    const funcoes = online.estado.impostor.revelacao.funcoes;
+    const j = new Impostor.JogoImpostor();
+    const fw = {}, fb = {};
+    for (const id of Object.keys(funcoes)) (Number(id) < 32 ? fw : fb)[id] = funcoes[id];
+    j.definirFuncoes('w', fw);
+    j.definirFuncoes('b', fb);
+    const foto = (ultimo) => {
+      const visao = j.tabuleiroFinal();
+      return { visao: visao, tabuleiro: visao.map(letraDaVisao), ultimo: ultimo, capturadas: j.pecasCapturadas() };
+    };
+    posicoes.push(foto(null));
+    for (const l of lances) {
+      const feito = j.mover({ from: l.from, to: l.to, promotion: l.promotion });
+      if (!feito) break;
+      posicoes.push(foto(feito));
+    }
+    return posicoes;
+  }
+  const c = new Chess();
+  posicoes.push({ tabuleiro: c.obterTabuleiro(), visao: null, ultimo: null, capturadas: c.pecasCapturadas() });
+  for (const l of lances) {
+    const feito = c.mover({ from: l.from, to: l.to, promotion: l.promotion });
+    if (!feito) break;
+    posicoes.push({ tabuleiro: c.obterTabuleiro(), visao: null, ultimo: feito, capturadas: c.pecasCapturadas() });
+  }
+  return posicoes;
+}
+
+/** Entra na revisão mostrando a posição `indice` (0 = antes do 1º lance). */
+function entrarRevisao(indice) {
+  if (!podeRevisar()) return;
+  if (!revisao.ativa) {
+    revisao.posicoes = construirPosicoesRevisao();
+    revisao.ativa = true;
+    limparSelecao();
+    elBarraRevisao.hidden = false;
+    elTelaJogo.classList.add('em-revisao');
+    mostrarAba('historico');
+  }
+  irParaPosicao(indice == null ? 0 : indice, { semSom: true });
+}
+
+function irParaPosicao(indice, opcoes) {
+  if (!revisao.ativa) return;
+  const max = revisao.posicoes.length - 1;
+  const novo = Math.max(0, Math.min(max, indice));
+  const mudou = novo !== revisao.indice;
+  revisao.indice = novo;
+  const ultimo = revisao.posicoes[novo].ultimo;
+  if (mudou && !(opcoes && opcoes.semSom) && ultimo) som(ultimo.captured ? 'capturar' : 'mover');
+  const sans = historicoAtual();
+  const texto = document.getElementById('texto-revisao');
+  texto.textContent = novo === 0
+    ? 'Início · 0/' + max
+    : (Math.ceil(novo / 2) + (novo % 2 ? '. ' : '… ') + (sans[novo - 1] || '') + ' · ' + novo + '/' + max);
+  elBarraRevisao.querySelector('[data-revisao="primeiro"]').disabled = novo === 0;
+  elBarraRevisao.querySelector('[data-revisao="anterior"]').disabled = novo === 0;
+  elBarraRevisao.querySelector('[data-revisao="proximo"]').disabled = novo === max;
+  elBarraRevisao.querySelector('[data-revisao="ultimo"]').disabled = novo === max;
+  renderizar();
+}
+
+function sairRevisao(opcoes) {
+  if (!revisao.ativa) return;
+  revisao.ativa = false;
+  revisao.posicoes = [];
+  revisao.indice = 0;
+  elBarraRevisao.hidden = true;
+  elTelaJogo.classList.remove('em-revisao');
+  if (!(opcoes && opcoes.semRender)) renderizar();
+}
+
+elBtnRevisar.addEventListener('click', () => entrarRevisao(0));
+elBarraRevisao.addEventListener('click', (e) => {
+  const b = e.target.closest('[data-revisao]');
+  if (!b || b.disabled) return;
+  const acao = b.getAttribute('data-revisao');
+  if (acao === 'sair') return sairRevisao();
+  if (acao === 'primeiro') irParaPosicao(0);
+  if (acao === 'anterior') irParaPosicao(revisao.indice - 1);
+  if (acao === 'proximo') irParaPosicao(revisao.indice + 1);
+  if (acao === 'ultimo') irParaPosicao(revisao.posicoes.length - 1);
+});
+// Clique num lance do histórico: vai direto para aquela posição.
+elHistorico.addEventListener('click', (e) => {
+  const b = e.target.closest('[data-ply]');
+  if (!b) return;
+  const ply = Number(b.getAttribute('data-ply'));
+  if (!revisao.ativa) entrarRevisao(ply);
+  else irParaPosicao(ply);
+});
+// Setas do teclado: ← → navegam; Home/End vão às pontas. Com a partida
+// terminada, ← também abre a revisão no penúltimo lance.
+document.addEventListener('keydown', (e) => {
+  if (elTelaJogo.hidden || e.altKey || e.ctrlKey || e.metaKey) return;
+  const alvo = e.target;
+  if (alvo && (alvo.tagName === 'INPUT' || alvo.tagName === 'TEXTAREA' || alvo.closest('.abas'))) return;
+  if (!elModalConfig.hidden || !elModalConfirma.hidden || !elModalPromocao.hidden) return;
+  if (!revisao.ativa) {
+    if (e.key === 'ArrowLeft' && podeRevisar()) {
+      entrarRevisao(historicoAtual().length - 1);
+      e.preventDefault();
+    }
+    return;
+  }
+  const mapa = { ArrowLeft: -1, ArrowRight: 1 };
+  if (e.key in mapa) irParaPosicao(revisao.indice + mapa[e.key]);
+  else if (e.key === 'Home') irParaPosicao(0);
+  else if (e.key === 'End') irParaPosicao(revisao.posicoes.length - 1);
+  else return;
+  e.preventDefault();
+});
+
+// ------------------------------------------------------------------------
+// Chat rápido (só online; o servidor valida o ID e o limite de envio)
+// ------------------------------------------------------------------------
+
+let naoLidas = 0;
+let ultimoEnvioChat = 0;
+
+function montarBotoesChat() {
+  const frases = document.getElementById('chat-frases');
+  const emojis = document.getElementById('chat-emojis');
+  for (const m of ChatRapido.MENSAGENS) {
+    const b = document.createElement('button');
+    b.type = 'button';
+    b.className = m.tipo === 'emoji' ? 'botao botao-emoji' : 'botao botao-frase';
+    b.textContent = m.texto;
+    b.dataset.chatId = m.id;
+    b.setAttribute('aria-label', 'Enviar: ' + m.texto);
+    (m.tipo === 'emoji' ? emojis : frases).appendChild(b);
+  }
+}
+montarBotoesChat();
+
+function enviarChat(id) {
+  if (!online.ativo || online.espectador) return;
+  // Trava local curta (o servidor tem o limite de verdade).
+  const agora = Date.now();
+  if (agora - ultimoEnvioChat < 700) { toast('Calma! Espere um pouco.'); return; }
+  ultimoEnvioChat = agora;
+  emitirQuandoPronto('chat', { id: id });
+}
+document.getElementById('painel-chat').addEventListener('click', (e) => {
+  const b = e.target.closest('[data-chat-id]');
+  if (b && !b.disabled) enviarChat(b.getAttribute('data-chat-id'));
+});
+
+function zerarNaoLidas() {
+  naoLidas = 0;
+  const el = document.getElementById('chat-nao-lidas');
+  if (el) el.hidden = true;
+}
+
+/** Limpa o registro e recoloca as mensagens que o servidor guardou. */
+function restaurarChat(lista) {
+  document.getElementById('chat-registro').innerHTML = '';
+  zerarNaoLidas();
+  for (const m of lista || []) adicionarMensagemChat(m, false);
+}
+
+/** Lado do tabuleiro (topo/base) onde fica o jogador que mandou a mensagem. */
+function ladoDoBalao(m) {
+  const corBase = brancasEmbaixo ? 'w' : 'b';
+  if (m.cor === 'w' || m.cor === 'b') return m.cor === corBase ? 'base' : 'topo';
+  return m.papel === online.papel ? 'base' : 'topo';
+}
+
+/**
+ * Mostra uma mensagem: no registro (aba Chat) e, ao vivo, num balão perto
+ * do nome do jogador. Com o chat silenciado, só aparecem as nossas.
+ */
+function adicionarMensagemChat(m, aoVivo) {
+  const msg = m && ChatRapido.mensagemPorId(m.id);
+  if (!msg) return;
+  const minha = !online.espectador && m.papel === online.papel;
+  if (config.chatMudo && !minha) return;
+  const nome = minha ? 'Você' : (sanitizarNome(m.nome) || (m.cor === 'w' ? 'Brancas' : m.cor === 'b' ? 'Pretas' : 'Oponente'));
+
+  const registro = document.getElementById('chat-registro');
+  const li = document.createElement('li');
+  li.className = minha ? 'chat-minha' : '';
+  const quem = document.createElement('strong');
+  quem.textContent = nome + ': ';
+  const texto = document.createElement('span');
+  texto.textContent = msg.texto;
+  li.append(quem, texto);
+  registro.appendChild(li);
+  while (registro.children.length > 40) registro.firstElementChild.remove();
+  registro.scrollTop = registro.scrollHeight;
+
+  if (!aoVivo) return;
+  const balao = document.getElementById(ladoDoBalao(m) === 'base' ? 'balao-base' : 'balao-topo');
+  balao.textContent = (minha ? '' : nome + ': ') + msg.texto;
+  balao.classList.toggle('balao-emoji', msg.tipo === 'emoji');
+  balao.hidden = false;
+  balao.classList.remove('balao-sumindo');
+  clearTimeout(balao._t);
+  clearTimeout(balao._t2);
+  balao._t = setTimeout(() => balao.classList.add('balao-sumindo'), 3200);
+  balao._t2 = setTimeout(() => { balao.hidden = true; balao.classList.remove('balao-sumindo'); }, 3600);
+  if (!minha) {
+    som('selecionar');
+    if (abaAtual !== 'chat') {
+      naoLidas += 1;
+      const el = document.getElementById('chat-nao-lidas');
+      el.textContent = String(naoLidas);
+      el.hidden = false;
+    }
+  }
+}
+
+function definirChatMudo(mudo) {
+  config.chatMudo = !!mudo;
+  salvarConfig();
+  sincronizarBotoesConfig();
+  if (mudo) {
+    document.getElementById('balao-topo').hidden = true;
+    document.getElementById('balao-base').hidden = true;
+  }
+}
+document.getElementById('cfg-chat-mudo').addEventListener('change', (e) => definirChatMudo(e.target.checked));
+document.getElementById('cfg-chat-mudo-geral').addEventListener('change', (e) => definirChatMudo(e.target.checked));
+
+// ------------------------------------------------------------------------
+// Atalhos da aba Opções
+// ------------------------------------------------------------------------
+
+document.getElementById('btn-som-rapido').addEventListener('click', () => alternarMudo());
+document.getElementById('btn-config-completa').addEventListener('click', abrirConfig);
+document.querySelectorAll('[data-estilo-rapido]').forEach((b) => {
+  b.addEventListener('click', () => {
+    config.estiloPecas = b.getAttribute('data-estilo-rapido');
+    salvarConfig();
+    sincronizarBotoesConfig();
+    renderizar();
+    som('clique');
+  });
+});
+
+// ------------------------------------------------------------------------
 // Diálogos e botões
 // ------------------------------------------------------------------------
 
@@ -1709,7 +2716,14 @@ elBtnModosCancelar.addEventListener('click', () => {
   if (partidaIniciada && !partidaAcabou()) retomarRelogio();
 });
 
-document.getElementById('btn-jogar-local').addEventListener('click', () => abrirMenuModosLocal());
+// Cartão "Local (mesmo PC)": os três tempos começam a partida direto.
+document.querySelectorAll('[data-modo-inicio]').forEach((btn) => {
+  btn.addEventListener('click', () => iniciarPartidaLocal(btn.getAttribute('data-modo-inicio')));
+});
+document.getElementById('form-assistir').addEventListener('submit', (e) => {
+  e.preventDefault();
+  assistirSala(document.getElementById('input-assistir').value);
+});
 document.getElementById('btn-criar-sala').addEventListener('click', () => {
   elModalCriar.hidden = false;
   som('menu');
@@ -1779,10 +2793,16 @@ elBtnNovo.addEventListener('click', async () => {
     if (ok) voltarAoInicio();
     return;
   }
+  if (modoApp === 'bot') {
+    sincronizarCorBot();
+    elModalBot.hidden = false;
+    som('menu');
+    return;
+  }
   abrirMenuModosLocal();
 });
 document.getElementById('btn-inicio').addEventListener('click', async () => {
-  if (modoApp !== 'inicio' && partidaIniciada && !partidaAcabou()) {
+  if (modoApp !== 'inicio' && partidaIniciada && !partidaAcabou() && !online.espectador) {
     const ok = await confirmar('Voltar ao início?', 'A partida atual será deixada.');
     if (!ok) return;
   }
@@ -1790,8 +2810,9 @@ document.getElementById('btn-inicio').addEventListener('click', async () => {
 });
 
 async function desfazerJogada() {
-  if (online.ativo || animando || fimPorTempo || historicoAtual().length === 0) return;
+  if (online.ativo || animando || fimPorTempo || historicoAtual().length === 0 || revisao.ativa) return;
   if (promocaoPendente) { promocaoPendente = null; fecharPromocao(); }
+  if (modoApp === 'bot') { await desfazerContraBot(); return; }
   const ultimo = jogo.ultimoLance();
   animando = true;
   elBtnDesfazer.disabled = true;
@@ -1803,6 +2824,31 @@ async function desfazerJogada() {
     renderizar();
     if (!partidaAcabou()) retomarRelogio();
   }
+}
+/**
+ * Contra o bot, "Desfazer" volta até a última vez em que era a vez do
+ * jogador (desfaz o lance do bot e o do jogador). Se o bot estava pensando,
+ * o pensamento é cancelado e só o lance do jogador é desfeito.
+ */
+async function desfazerContraBot() {
+  cancelarPensamentoBot();
+  prelance = null;
+  animando = true;
+  try {
+    let desfeitos = 0;
+    while (jogo.historicoSan().length && (desfeitos === 0 || jogo.vez() !== bot.corJogador)) {
+      const ultimo = jogo.ultimoLance();
+      jogo.desfazer();
+      desfeitos += 1;
+      if (ultimo) await animarLance(ultimo, { inverso: true });
+      renderizar();
+    }
+  } finally {
+    animando = false;
+    renderizar();
+  }
+  // Se voltou para o começo com o bot de brancas, ele joga de novo.
+  if (jogo.vez() !== bot.corJogador) pedirLanceBot();
 }
 elBtnDesfazer.addEventListener('click', () => desfazerJogada());
 elBtnGirar.addEventListener('click', () => {
@@ -1869,6 +2915,8 @@ document.getElementById('modal-config').addEventListener('click', (e) => {
 document.addEventListener('keydown', (e) => {
   if (e.key !== 'Escape') return;
   if (!elModalConfig.hidden) { fecharConfig(); return; }
+  if (!elModalBot.hidden) { elModalBot.hidden = true; return; }
+  if (revisao.ativa && elModalConfirma.hidden) { sairRevisao(); return; }
   if (!elModalCriar.hidden) { elModalCriar.hidden = true; return; }
   if (!elModalModos.hidden) { elBtnModosCancelar.click(); return; }
   if (!elModalConfirma.hidden) { document.getElementById('btn-confirma-nao').click(); return; }
@@ -1884,8 +2932,9 @@ document.addEventListener('keydown', () => { if (SonsXadrez) SonsXadrez.garantir
 document.addEventListener('click', (e) => {
   const btn = e.target.closest('button');
   if (!btn || btn.disabled) return;
-  if (btn.id === 'cfg-som' || btn.id === 'btn-config' || btn.id === 'btn-jogar-local' || btn.id === 'btn-criar-sala' || btn.id === 'btn-splash-jogar') return;
+  if (btn.id === 'cfg-som' || btn.id === 'btn-som-rapido' || btn.id === 'btn-config' || btn.id === 'btn-criar-sala' || btn.id === 'btn-splash-jogar') return;
   if (btn.hasAttribute('data-tema-escolha') || btn.hasAttribute('data-modo') || btn.hasAttribute('data-cfg')) return;
+  if (btn.hasAttribute('data-revisao') || btn.hasAttribute('data-chat-id') || btn.hasAttribute('data-estilo-rapido') || btn.hasAttribute('data-nivel') || btn.hasAttribute('data-modo-inicio')) return;
   if (btn.closest('#tabuleiro') || btn.closest('#opcoes-promocao')) return;
   som('clique');
 });
@@ -1899,6 +2948,14 @@ globalThis.XadrezApp = {
   get online() { return online; },
   get jogo() { return jogo; },
   get config() { return config; },
+  get bot() { return bot; },
+  get revisao() { return revisao; },
+  get prelance() { return prelance; },
+  get marcas() { return marcas; },
+  iniciarPartidaLocal: iniciarPartidaLocal,
+  entrarRevisao: entrarRevisao,
+  irParaPosicao: irParaPosicao,
+  mostrarAba: mostrarAba,
   garantirSocket: garantirSocket,
   emitirQuandoPronto: emitirQuandoPronto,
   abrirPromocao: abrirPromocao,

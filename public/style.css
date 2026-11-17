@@ -2162,3 +2162,436 @@ h1 {
   .tela-splash #btn-splash-jogar, .tela-inicio .cartao-escolha,
   .overlay-cores .cartao-cores { animation: none !important; }
 }
+
+/* ========================================================================
+   v1.3.0 — Menu em cartões, subabas, revisão, chat rápido, espectador e bot
+   ======================================================================== */
+
+/* ---------- Início: 4 cartões (2x2 no computador, 1 coluna no celular) ---------- */
+.grade-inicio.grade-inicio-4 {
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  max-width: 980px;
+  margin-left: auto;
+  margin-right: auto;
+}
+.cartao-topo { display: flex; gap: 0.85rem; align-items: flex-start; margin-bottom: 0.8rem; }
+.cartao-topo .icone-escolha { margin-bottom: 0; flex: 0 0 auto; }
+.cartao-topo h2 { margin: 0 0 0.2rem; }
+.cartao-topo p { margin: 0; color: var(--texto-suave); font-size: 0.92rem; }
+.cartao-escolha .acoes + .form-entrar { margin-top: auto; }
+
+.rotulo-mini {
+  display: block;
+  font-size: 0.72rem;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  color: var(--rotulo);
+  font-weight: 700;
+  margin-bottom: 0.3rem;
+}
+.seletor-cor-bot { margin-bottom: 0.65rem; }
+/* Controle segmentado (cor contra o bot). */
+.segmentos {
+  display: grid;
+  grid-template-columns: 1fr 1fr auto;
+  gap: 0;
+  border: 1px solid var(--borda);
+  border-radius: 12px;
+  overflow: hidden;
+  background: var(--bg-elevado);
+}
+.segmento {
+  appearance: none;
+  border: 0;
+  border-right: 1px solid var(--borda);
+  background: transparent;
+  color: var(--texto);
+  font: inherit;
+  font-weight: 650;
+  font-size: 0.92rem;
+  min-height: 44px;
+  min-width: 44px;
+  padding: 0 0.7rem;
+  cursor: pointer;
+}
+.segmento:last-child { border-right: 0; }
+.segmento:hover { background: var(--botao-hover); }
+.segmento[aria-pressed="true"] {
+  background: color-mix(in srgb, var(--destaque) 26%, transparent);
+  color: var(--texto);
+  box-shadow: inset 0 -3px 0 var(--destaque);
+}
+.segmento:focus-visible { outline: 2px solid var(--destaque); outline-offset: -2px; }
+
+/* Botões grandes de dificuldade / tempo (um toque começa a partida). */
+.grade-niveis { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 0.5rem; margin-top: auto; }
+.botao-nivel {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 0.1rem;
+  min-height: 58px;
+  padding: 0.5rem 0.4rem;
+  text-align: center;
+}
+.botao-nivel strong { font-size: 1rem; }
+.botao-nivel small { font-size: 0.74rem; font-weight: 550; color: var(--texto-suave); }
+.botao-nivel.nivel-lembrado { border-color: var(--destaque); box-shadow: 0 0 0 1px var(--destaque) inset; }
+#modal-bot .grade-niveis { margin-top: 0.8rem; }
+
+@media (max-width: 760px) {
+  .grade-inicio.grade-inicio-4 { grid-template-columns: 1fr; }
+}
+@media (orientation: landscape) and (max-height: 520px) {
+  .grade-inicio.grade-inicio-4 { grid-template-columns: 1fr 1fr; }
+  .cartao-topo { margin-bottom: 0.45rem; }
+  .cartao-topo p { font-size: 0.82rem; }
+  .botao-nivel { min-height: 48px; padding: 0.3rem; }
+  .botao-nivel small { display: none; }
+  .seletor-cor-bot { margin-bottom: 0.45rem; }
+  .seletor-cor-bot .rotulo-mini { display: none; }
+}
+@media (min-width: 1700px) {
+  .grade-inicio.grade-inicio-4 { max-width: 1120px; }
+}
+
+/* ---------- Área do tabuleiro: coluna (barras, tabuleiro, revisão) ---------- */
+.area-tabuleiro { flex-direction: column; align-items: center; gap: 0.35rem; }
+.tabuleiro-envoltorio { position: relative; }
+
+/* Balões do chat rápido. */
+.balao-chat {
+  position: absolute;
+  z-index: 8;
+  max-width: min(70%, 18rem);
+  padding: 0.45rem 0.75rem;
+  border-radius: 14px;
+  background: var(--texto);
+  color: var(--bg, #15171c);
+  font-weight: 700;
+  font-size: 0.95rem;
+  line-height: 1.25;
+  box-shadow: 0 6px 18px rgba(0, 0, 0, 0.45);
+  pointer-events: none;
+  transition: opacity 0.35s ease, transform 0.35s ease;
+  animation: entrar-subindo 0.2s ease-out both;
+}
+.balao-chat[hidden] { display: none; }
+.balao-chat.balao-emoji { font-size: 1.6rem; padding: 0.25rem 0.6rem; }
+.balao-topo { top: 0.5rem; right: 0.6rem; border-top-right-radius: 4px; }
+.balao-base { bottom: 2rem; left: 2rem; border-bottom-left-radius: 4px; }
+.balao-chat.balao-sumindo { opacity: 0; transform: translateY(-6px); }
+
+/* Barra de revisão (embaixo do tabuleiro). */
+.barra-revisao {
+  display: flex;
+  align-items: center;
+  gap: 0.35rem;
+  width: 100%;
+  max-width: calc(var(--tamanho-tabuleiro) + 1.2rem);
+  box-sizing: border-box;
+  padding: 0.3rem;
+  background: var(--painel);
+  border: 1px solid var(--destaque);
+  border-radius: 12px;
+}
+.barra-revisao[hidden] { display: none; }
+.botao-icone {
+  min-width: 44px;
+  min-height: 44px;
+  padding: 0 0.6rem;
+  font-size: 1.05rem;
+  line-height: 1;
+  display: inline-grid;
+  place-items: center;
+}
+.texto-revisao {
+  flex: 1 1 auto;
+  min-width: 0;
+  text-align: center;
+  font-weight: 750;
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  font-size: 0.92rem;
+}
+.botao-fechar-revisao { margin-left: 0.15rem; }
+.tela-jogo.em-revisao .tabuleiro { box-shadow: var(--sombra), 0 0 0 6px var(--moldura-interna), 0 0 0 8px var(--destaque); }
+
+/* Tabuleiro encolhe um pouco para a barra de revisão caber sem rolar. */
+@media (min-width: 861px) and (min-height: 521px) {
+  .tela-jogo.em-revisao { --tamanho-tabuleiro: min(calc(72vh - 3.8rem), calc(100vw - 2.5rem), 640px); }
+}
+@media (min-width: 1600px) and (min-height: 900px) {
+  .tela-jogo.em-revisao { --tamanho-tabuleiro: min(calc(74vh - 3.8rem), calc(100vw - 2.5rem), 800px); }
+}
+@media (max-width: 860px) and (orientation: portrait) {
+  .tela-jogo.em-revisao {
+    --tamanho-tabuleiro: min(
+      calc(100vw - 2.6rem - env(safe-area-inset-left, 0px) - env(safe-area-inset-right, 0px)),
+      calc(100dvh - 21rem - env(safe-area-inset-top, 0px) - env(safe-area-inset-bottom, 0px))
+    );
+  }
+}
+@media (orientation: landscape) and (max-height: 520px) {
+  .tela-jogo.em-revisao {
+    --tamanho-tabuleiro: min(
+      calc(100dvh - 9.6rem - env(safe-area-inset-top, 0px) - env(safe-area-inset-bottom, 0px)),
+      calc(100vw - 19rem - env(safe-area-inset-left, 0px) - env(safe-area-inset-right, 0px))
+    );
+  }
+  .barra-revisao { padding: 0.15rem; gap: 0.2rem; }
+  .texto-revisao { font-size: 0.8rem; }
+}
+
+/* ---------- Subabas do painel ---------- */
+.abas {
+  display: flex;
+  gap: 0.25rem;
+  padding: 0.25rem;
+  background: var(--painel);
+  border: 1px solid var(--borda);
+  border-radius: 12px;
+}
+.aba {
+  appearance: none;
+  flex: 1 1 0;
+  min-width: 0;
+  min-height: 44px;
+  border: 0;
+  border-radius: 9px;
+  background: transparent;
+  color: var(--texto-suave);
+  font: inherit;
+  font-weight: 700;
+  font-size: 0.88rem;
+  cursor: pointer;
+  position: relative;
+  padding: 0 0.3rem;
+  white-space: nowrap;
+}
+.aba[hidden] { display: none; }
+.aba:hover { color: var(--texto); background: var(--botao-hover); }
+.aba[aria-selected="true"] {
+  color: var(--botao-principal-texto);
+  background: linear-gradient(180deg, var(--destaque), var(--destaque-escuro));
+}
+.aba:focus-visible { outline: 2px solid var(--destaque); outline-offset: 2px; }
+.contador-aba {
+  display: inline-grid;
+  place-items: center;
+  min-width: 1.2rem;
+  height: 1.2rem;
+  margin-left: 0.3rem;
+  padding: 0 0.25rem;
+  border-radius: 999px;
+  background: #e5484d;
+  color: #fff;
+  font-size: 0.72rem;
+  font-weight: 800;
+}
+.contador-aba[hidden] { display: none; }
+.painel-aba { display: flex; flex-direction: column; gap: 0.75rem; }
+.painel-aba[hidden] { display: none; }
+.acoes-principais { display: grid; gap: 0.5rem; }
+.acoes-principais .botao[hidden] { display: none; }
+
+/* Histórico com lances clicáveis. */
+.historico button.lance {
+  appearance: none;
+  border: 0;
+  background: transparent;
+  color: var(--texto);
+  font: inherit;
+  font-weight: 600;
+  text-align: left;
+  padding: 0.1rem 0.3rem;
+  border-radius: 5px;
+  min-height: 1.6rem;
+}
+.historico.clicavel button.lance { cursor: pointer; }
+.historico.clicavel button.lance:hover { background: var(--botao-hover); }
+.historico button.lance:disabled { cursor: default; color: var(--texto); opacity: 1; }
+.historico button.lance.lance-atual {
+  background: color-mix(in srgb, var(--destaque) 30%, transparent);
+  box-shadow: inset 0 0 0 1px var(--destaque);
+}
+@media (pointer: coarse) {
+  .historico.clicavel button.lance { min-height: 44px; }
+}
+.tela-jogo.em-revisao .historico-cartao { max-height: 300px; }
+
+/* Aba Opções. */
+.grade-opcoes-jogo { display: grid; grid-template-columns: 1fr 1fr; gap: 0.5rem; }
+.grade-opcoes-jogo .botao { font-size: 0.86rem; padding-left: 0.5rem; padding-right: 0.5rem; }
+.grade-opcoes.grade-opcoes-3 { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 0.4rem; }
+.opcoes-cartao { display: flex; flex-direction: column; gap: 0.6rem; }
+.opcoes-cartao .rotulo-slider { margin: 0.2rem 0 0; }
+.botao-sair { border-color: color-mix(in srgb, #e5484d 55%, var(--borda)); color: var(--texto); }
+.botao-sair:hover { background: color-mix(in srgb, #e5484d 22%, var(--botao-bg)); }
+
+/* ---------- Chat rápido ---------- */
+.chat-cartao { display: flex; flex-direction: column; gap: 0.55rem; }
+.chat-topo { display: flex; align-items: center; justify-content: space-between; gap: 0.5rem; }
+.chat-topo .rotulo { margin: 0; }
+.opcao-check-mini { display: inline-flex; align-items: center; gap: 0.35rem; min-height: 44px; font-size: 0.85rem; font-weight: 650; cursor: pointer; }
+.opcao-check-mini input { width: 1.15rem; height: 1.15rem; accent-color: var(--destaque); }
+.chat-registro {
+  list-style: none;
+  margin: 0;
+  padding: 0.35rem 0.5rem;
+  min-height: 3.2rem;
+  max-height: 8.5rem;
+  overflow-y: auto;
+  background: var(--bg-elevado);
+  border: 1px solid var(--borda);
+  border-radius: 10px;
+  font-size: 0.88rem;
+}
+.chat-registro li { padding: 0.12rem 0; overflow-wrap: anywhere; }
+.chat-registro li strong { color: var(--texto-suave); }
+.chat-registro li.chat-minha strong { color: var(--destaque); }
+.chat-registro:empty::after { content: "Nenhuma mensagem ainda."; color: var(--rotulo); font-size: 0.82rem; }
+.chat-frases { display: flex; flex-wrap: wrap; gap: 0.35rem; }
+.botao-frase { padding: 0.4rem 0.7rem; font-size: 0.84rem; flex: 1 1 auto; }
+.chat-emojis { display: grid; grid-template-columns: repeat(auto-fill, minmax(44px, 1fr)); gap: 0.35rem; }
+.botao-emoji { min-width: 44px; padding: 0; font-size: 1.3rem; line-height: 1; }
+.painel-chat.so-leitura .chat-frases,
+#painel-chat.so-leitura .chat-frases,
+#painel-chat.so-leitura .chat-emojis { opacity: 0.5; }
+
+/* ---------- Faixa online: selo "Assistindo" e contador de espectadores ---------- */
+.selo-faixa {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.3rem;
+  padding: 0.2rem 0.55rem;
+  border-radius: 999px;
+  font-size: 0.8rem;
+  font-weight: 750;
+  background: color-mix(in srgb, var(--destaque) 18%, transparent);
+  border: 1px solid color-mix(in srgb, var(--destaque) 45%, transparent);
+  color: var(--texto);
+  white-space: nowrap;
+}
+.selo-faixa[hidden] { display: none; }
+
+/* ---------- Status "Bot pensando…" ---------- */
+.status-jogo.pensando { color: var(--destaque); animation: pulsar-pensando 1.1s ease-in-out infinite; }
+@keyframes pulsar-pensando { 50% { opacity: 0.45; } }
+
+/* ---------- Impostor no fim / revisão: selo com a função real de todas ---------- */
+.selo-funcao.selo-final {
+  background: #f5b82e;
+  color: #1d1606;
+  border-color: #fff;
+}
+.casa.peca-impostora-fim { box-shadow: inset 0 0 0 3px #f5b82e; }
+
+/* ---------- Estilos de peça (SVG) ---------- */
+.peca-pixel .peca-svg-img,
+.peca-pixel-img {
+  shape-rendering: crispEdges;
+  image-rendering: pixelated;
+  filter: none;
+}
+.peca-flat .peca-svg-img { filter: drop-shadow(0 1px 1px rgba(0, 0, 0, 0.35)); }
+
+/* Celular deitado: painel mais enxuto. */
+@media (orientation: landscape) and (max-height: 520px) {
+  .abas { padding: 0.2rem; }
+  .aba { font-size: 0.8rem; }
+  .painel-aba { gap: 0.5rem; }
+  .chat-registro { max-height: 5.5rem; }
+}
+@media (prefers-reduced-motion: reduce) {
+  .status-jogo.pensando, .balao-chat { animation: none; }
+}
+.amostra-selo.amostra-selo-final { background: #f5b82e; color: #1d1606; border-color: #fff; }
+
+/* Barra de revisão estreita (celular em pé pequeno ou deitado): o texto do
+   lance ganha uma linha própria acima dos botões, para não ficar cortado. */
+@media (max-width: 420px), (orientation: landscape) and (max-height: 520px) {
+  .barra-revisao { flex-wrap: wrap; justify-content: space-between; row-gap: 0.1rem; }
+  .barra-revisao .texto-revisao { order: -1; flex: 1 0 100%; font-size: 0.82rem; line-height: 1.3; }
+}
+@media (max-width: 420px) and (orientation: portrait) {
+  .tela-jogo.em-revisao {
+    --tamanho-tabuleiro: min(
+      calc(100vw - 2.6rem - env(safe-area-inset-left, 0px) - env(safe-area-inset-right, 0px)),
+      calc(100dvh - 22.2rem - env(safe-area-inset-top, 0px) - env(safe-area-inset-bottom, 0px))
+    );
+  }
+}
+@media (orientation: landscape) and (max-height: 520px) {
+  .tela-jogo.em-revisao {
+    --tamanho-tabuleiro: min(
+      calc(100dvh - 10.8rem - env(safe-area-inset-top, 0px) - env(safe-area-inset-bottom, 0px)),
+      calc(100vw - 19rem - env(safe-area-inset-left, 0px) - env(safe-area-inset-right, 0px))
+    );
+  }
+}
+/* Celular deitado na revisão: barra em grade (texto + ✕ em cima, setas
+   embaixo) e as barras de nome somem, para o tabuleiro continuar inteiro. */
+@media (orientation: landscape) and (max-height: 520px) {
+  .barra-revisao {
+    display: grid;
+    grid-template-columns: repeat(4, minmax(44px, 1fr));
+    gap: 0.2rem;
+    align-items: center;
+  }
+  .barra-revisao[hidden] { display: none; }
+  .barra-revisao .texto-revisao { grid-column: 1 / span 3; grid-row: 1; order: 0; }
+  .barra-revisao .botao-fechar-revisao { grid-column: 4; grid-row: 1; margin: 0; }
+  .barra-revisao [data-revisao="primeiro"],
+  .barra-revisao [data-revisao="anterior"],
+  .barra-revisao [data-revisao="proximo"],
+  .barra-revisao [data-revisao="ultimo"] { grid-row: 2; }
+  .tela-jogo.em-revisao .area-tabuleiro .barra-lado { display: none; }
+  .tela-jogo.em-revisao {
+    --tamanho-tabuleiro: min(
+      calc(100dvh - 8.8rem - env(safe-area-inset-top, 0px) - env(safe-area-inset-bottom, 0px)),
+      calc(100vw - 19rem - env(safe-area-inset-left, 0px) - env(safe-area-inset-right, 0px))
+    );
+  }
+}
+
+/* ---------- Marcações (setas/círculos) e pré-lance ---------- */
+.tabuleiro-bloco { position: relative; }
+/* Camada SVG por cima das peças; não recebe cliques (eles vão para as casas). */
+.camada-marcas {
+  position: absolute;
+  top: 0;
+  left: 0;
+  width: var(--tamanho-tabuleiro);
+  height: var(--tamanho-tabuleiro);
+  z-index: 6;
+  pointer-events: none;
+  overflow: visible;
+}
+/* Toque longo no celular: sem menu/lupa do sistema em cima do tabuleiro. */
+.tabuleiro { -webkit-touch-callout: none; }
+
+/* Pré-lance agendado: origem e destino com uma cor própria (rosa). */
+.casa.prelance-origem::after,
+.casa.prelance-destino::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  background: rgba(230, 70, 125, 0.45);
+}
+.casa.prelance-destino::after { box-shadow: inset 0 0 0 3px rgba(255, 140, 180, 0.95); }
+/* Destinos de pré-lance (seleção na vez do adversário): pontos rosados. */
+.tabuleiro.modo-prelance .casa.destino-vazio::before { background: rgba(200, 40, 100, 0.42); }
+.aviso-prelance {
+  margin: 0.35rem 0 0;
+  font-size: 0.85rem;
+  font-weight: 700;
+  color: #ff8cb4;
+}
+.aviso-prelance[hidden] { display: none; }
+.ajuda-marcas { margin: 0; font-size: 0.8rem; }
+#btn-prelance[aria-pressed="false"] { opacity: 0.8; }

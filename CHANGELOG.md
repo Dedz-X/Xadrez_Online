@@ -14,6 +14,81 @@ e este projeto adota o [Versionamento Semântico](https://semver.org/lang/pt-BR/
 
 ## [Não lançado]
 
+## [1.3.0] - 2026-11-17
+
+### Adicionado
+
+- **Contra o bot** (local, só xadrez clássico): três níveis — **Fácil** (lances
+  aleatórios, preferindo capturas), **Médio** (minimax de profundidade 2 só com
+  material) e **Difícil** (alfa-beta com aprofundamento iterativo até 4 lances,
+  tabelas de posição das peças, ordenação de lances e busca de capturas). O bot
+  roda num Web Worker (`public/bot-worker.js`), pensa no máximo ~2 s por lance e
+  usa o mesmo motor (`chess-engine.js`). O jogador escolhe a cor (brancas,
+  pretas ou aleatória); “Desfazer” volta até a sua vez. O Impostor contra o bot
+  ficou fora desta versão.
+- **Modo espectador**: qualquer pessoa com o código pode **Assistir** (cartão
+  próprio no início; ao tentar entrar numa sala cheia, o site oferece assistir).
+  O espectador vê tudo ao vivo, só leitura. No Impostor ele recebe só a
+  informação pública até o fim da partida. Os jogadores veem quantas pessoas
+  estão assistindo (👁️ N). Até 30 espectadores por sala.
+- **Chat rápido** nas partidas online: só frases prontas e emojis, validados pelo
+  servidor por ID e com limite de envio (4 mensagens a cada 10 s, intervalo
+  mínimo de 0,7 s). As mensagens aparecem num balão perto do jogador e num
+  registro na aba Chat; há a opção **Silenciar**. Espectadores leem, mas não
+  enviam. Lista de mensagens em `chat-rapido.js` (cópia idêntica em `public/`).
+- **Revisar partida** em todos os modos (local, bot, online clássico, online
+  Impostor e espectador): botão ao fim da partida, navegação ⏮ ◀ ▶ ⏭, setas do
+  teclado (← →, Home, End, Esc para sair) e clique num lance do histórico.
+- **Revelação no fim do Impostor**: quando a partida termina o servidor envia a
+  todos (jogadores e espectadores) as funções reais de todas as peças, inclusive
+  das capturadas; o tabuleiro final e a revisão mostram um selo dourado com a
+  função real de cada impostora.
+- Dois estilos de peças novos, em SVG: **Clássico** (plano, brancas com sombra
+  cinza clara, pretas azul-marinho `#2f3d4a`, sem contorno, base arredondada de
+  dois degraus e cruz no rei) e **Pixel** (8-bit em grade, bordas nítidas,
+  contorno preto de 1 px e sombra do lado direito).
+- **Marcações no tabuleiro** (como no Lichess): segure o botão direito e
+  arraste para desenhar uma **seta**; botão direito sem arrastar marca um
+  **círculo** na casa. Cores: normal verde, **Shift** vermelho, **Ctrl/Alt**
+  azul, **Shift+Ctrl** amarelo. Repetir a mesma marcação apaga; um clique
+  esquerdo comum no tabuleiro limpa tudo, e as marcações somem quando um lance
+  acontece. Funcionam a qualquer momento (inclusive na vez do adversário e na
+  revisão) e são só locais. A seta do cavalo sai em “L”. Camada SVG por cima
+  das peças, que respeita o tabuleiro girado; o menu de contexto não abre sobre
+  o tabuleiro. No celular, segurar o dedo ~0,5 s numa casa marca um círculo.
+  Botão **🧹 Limpar marcações** na aba Partida (quando há marcações) e em Opções.
+  Lógica em `public/marcacoes.js`.
+- **Pré-lance** nas partidas online (clássico e Impostor) e contra o bot: na vez
+  do adversário, clique ou arraste um lance; ele fica guardado (casas de origem e
+  destino em rosa, com aviso no painel) e é jogado sozinho logo depois do lance
+  do adversário, se for legal na nova posição — senão, é cancelado em silêncio.
+  Promoção vira dama. Só um por vez (um novo substitui o anterior); botão
+  direito ou clique numa casa vazia cancela. Opção **⚡ Pré-lance** em Opções
+  (ligado por padrão). No Impostor o pré-lance usa a função real das próprias
+  peças; o servidor valida como qualquer lance (inclusive a revelação). Não há
+  pré-lance no modo local (dois no mesmo PC). Lógica em `public/prelance.js`.
+- Testes: `test-chat.js`, `test-bot.js`, `test-prelance.js`, `test-e2e-v130.js`
+  e `test-e2e-prelance.js` (espectador sem segredos antes do fim, validação do
+  chat, legalidade do bot, revelação completa no fim do Impostor, pré-lance
+  executado/cancelado e marcações no navegador).
+
+### Alterado
+
+- **Início em 4 cartões**: Jogar online, Contra o bot, Local (mesmo PC) e
+  Assistir — cada cartão começa a ação com um toque (sem modal intermediário
+  para o bot e para o modo local).
+- **Painel da partida em subabas** (Partida, Histórico, Chat, Opções): só as
+  ações principais ficam à vista; girar, desfazer, som, estilo das peças,
+  configurações e sair foram para a aba Opções. Os botões da faixa online
+  (desistir/empate/sair) foram para o painel.
+- O estilo padrão das peças passa a ser **Clássico**. “Unicode” continua como
+  **Simples**.
+
+### Removido
+
+- Estilos de peças **Staunton** e **Pixelado**. Quem usava Staunton passa
+  automaticamente para Clássico; quem usava Pixelado, para Pixel.
+
 ## [1.2.0] - 2026-11-16
 
 ### Adicionado

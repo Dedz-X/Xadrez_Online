@@ -4,7 +4,7 @@
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
   <meta name="theme-color" content="#12141a">
-  <meta name="description" content="Xadrez Alternativo: xadrez clássico e o modo Impostor, local ou online, para dois jogadores.">
+  <meta name="description" content="Xadrez Alternativo: xadrez clássico e o modo Impostor, online (com espectadores e chat rápido), contra o bot ou no mesmo computador.">
   <title>Xadrez Alternativo</title>
   <script>
     (function () {
@@ -30,7 +30,7 @@
     <div class="splash-conteudo">
       <img src="logo.svg" class="splash-logo" alt="" width="168" height="168">
       <h1 class="splash-titulo">Xadrez <span>Alternativo</span></h1>
-      <p class="splash-texto">Xadrez clássico e o modo <strong>Impostor</strong>, em que as peças escondem como andam. Online com amigos ou no mesmo computador.</p>
+      <p class="splash-texto">Xadrez clássico e o modo <strong>Impostor</strong>, em que as peças escondem como andam. Online com amigos, contra o bot ou no mesmo computador.</p>
       <button type="button" id="btn-splash-jogar" class="botao botao-principal botao-grande">Jogar</button>
     </div>
   </div>
@@ -60,6 +60,7 @@
   </div>
 
   <!-- ======================== TELA INICIAL (MENU) ======================== -->
+  <!-- v1.3.0: quatro cartões, cada um com o caminho mais curto até a partida. -->
   <div id="tela-inicio" class="tela tela-inicio" hidden>
     <header class="cabecalho cabecalho-inicio">
       <div class="logo">
@@ -71,16 +72,21 @@
       </div>
     </header>
 
-    <div class="grade-inicio">
-      <section class="cartao cartao-inicio cartao-escolha">
-        <span class="icone-escolha" aria-hidden="true">🌐</span>
-        <h2>Jogar online</h2>
-        <p>Crie uma sala (Clássico ou Impostor) e convide alguém com um código ou link.</p>
+    <div class="grade-inicio grade-inicio-4">
+      <!-- 1. Online: criar sala (abre as opções) ou entrar com código -->
+      <section class="cartao cartao-inicio cartao-escolha" aria-labelledby="titulo-card-online">
+        <div class="cartao-topo">
+          <span class="icone-escolha" aria-hidden="true">🌐</span>
+          <div>
+            <h2 id="titulo-card-online">Jogar online</h2>
+            <p>Clássico ou Impostor, com um amigo, por código ou link.</p>
+          </div>
+        </div>
         <div class="acoes">
           <button type="button" id="btn-criar-sala" class="botao botao-principal botao-grande">Criar sala</button>
         </div>
         <form id="form-entrar" class="form-entrar" autocomplete="off">
-          <label for="input-codigo">Entrar com código</label>
+          <label for="input-codigo">Tem um código?</label>
           <div class="linha-codigo">
             <input id="input-codigo" name="codigo" type="text" maxlength="5" spellcheck="false" placeholder="K7X2Q" aria-label="Código da sala" class="campo-codigo">
             <button type="submit" class="botao">Entrar</button>
@@ -88,13 +94,62 @@
         </form>
       </section>
 
-      <section class="cartao cartao-inicio cartao-escolha">
-        <span class="icone-escolha" aria-hidden="true">🖥️</span>
-        <h2>Jogar local</h2>
-        <p>Dois jogadores no mesmo computador ou celular, revezando a vez.</p>
-        <div class="acoes">
-          <button type="button" id="btn-jogar-local" class="botao botao-principal botao-grande">Jogar neste computador</button>
+      <!-- 2. Contra o bot: dificuldade e cor no próprio cartão (um toque para começar) -->
+      <section class="cartao cartao-inicio cartao-escolha" aria-labelledby="titulo-card-bot">
+        <div class="cartao-topo">
+          <span class="icone-escolha" aria-hidden="true">🤖</span>
+          <div>
+            <h2 id="titulo-card-bot">Contra o bot</h2>
+            <p>Xadrez clássico contra o computador, sem relógio.</p>
+          </div>
         </div>
+        <div class="seletor-cor-bot" role="radiogroup" aria-label="Sua cor contra o bot">
+          <span class="rotulo-mini">Você joga de</span>
+          <div class="segmentos">
+            <button type="button" class="segmento" data-cor-bot="w" aria-pressed="true">♔ Brancas</button>
+            <button type="button" class="segmento" data-cor-bot="b" aria-pressed="false">♚ Pretas</button>
+            <button type="button" class="segmento" data-cor-bot="aleatoria" aria-pressed="false">🎲</button>
+          </div>
+        </div>
+        <div class="grade-niveis" role="group" aria-label="Dificuldade">
+          <button type="button" class="botao botao-nivel" data-nivel="facil"><strong>Fácil</strong><small>Joga solto</small></button>
+          <button type="button" class="botao botao-nivel" data-nivel="medio"><strong>Médio</strong><small>Pensa 2 lances</small></button>
+          <button type="button" class="botao botao-nivel" data-nivel="dificil"><strong>Difícil</strong><small>Pensa até 4</small></button>
+        </div>
+      </section>
+
+      <!-- 3. Local: os três tempos direto no cartão -->
+      <section class="cartao cartao-inicio cartao-escolha" aria-labelledby="titulo-card-local">
+        <div class="cartao-topo">
+          <span class="icone-escolha" aria-hidden="true">🖥️</span>
+          <div>
+            <h2 id="titulo-card-local">Local (mesmo PC)</h2>
+            <p>Dois jogadores no mesmo computador ou celular.</p>
+          </div>
+        </div>
+        <div class="grade-niveis" role="group" aria-label="Tempo da partida local">
+          <button type="button" class="botao botao-nivel" data-modo-inicio="livre"><strong>Livre</strong><small>Sem relógio</small></button>
+          <button type="button" class="botao botao-nivel" data-modo-inicio="10+0"><strong>Rápido</strong><small>10 min</small></button>
+          <button type="button" class="botao botao-nivel" data-modo-inicio="3+0"><strong>Blitz</strong><small>3 min</small></button>
+        </div>
+      </section>
+
+      <!-- 4. Assistir: só o código -->
+      <section class="cartao cartao-inicio cartao-escolha" aria-labelledby="titulo-card-assistir">
+        <div class="cartao-topo">
+          <span class="icone-escolha" aria-hidden="true">👁️</span>
+          <div>
+            <h2 id="titulo-card-assistir">Assistir</h2>
+            <p>Acompanhe ao vivo uma partida online, só olhando.</p>
+          </div>
+        </div>
+        <form id="form-assistir" class="form-entrar" autocomplete="off">
+          <label for="input-assistir">Código da sala</label>
+          <div class="linha-codigo">
+            <input id="input-assistir" name="codigo" type="text" maxlength="5" spellcheck="false" placeholder="K7X2Q" aria-label="Código da sala para assistir" class="campo-codigo">
+            <button type="submit" class="botao">Assistir</button>
+          </div>
+        </form>
       </section>
     </div>
   </div>
@@ -112,18 +167,16 @@
         </div>
       </header>
 
+      <!-- Faixa da sala online: código, link, espectadores e avisos -->
       <div id="faixa-online" class="faixa-online" hidden>
         <div class="faixa-codigo">
           <span>Sala</span>
           <strong id="texto-codigo">-----</strong>
           <button type="button" id="btn-copiar-link" class="botao botao-estreito">Copiar link</button>
         </div>
+        <span id="selo-assistindo" class="selo-faixa selo-assistindo" hidden>👁️ Assistindo</span>
+        <span id="contador-espectadores" class="selo-faixa" hidden title="Pessoas assistindo">👁️ <span id="numero-espectadores">0</span></span>
         <p id="aviso-conexao" class="aviso-conexao" hidden role="status">Oponente desconectado — aguardando reconexão…</p>
-        <div id="acoes-online" class="acoes-online">
-          <button type="button" id="btn-desistir" class="botao">Desistir</button>
-          <button type="button" id="btn-empate" class="botao">Propor empate</button>
-          <button type="button" id="btn-revanche" class="botao botao-principal" hidden>Revanche</button>
-        </div>
       </div>
 
       <div id="overlay-espera" class="overlay-espera" hidden>
@@ -189,12 +242,26 @@
             <div id="coordenadas-esq" class="coordenadas verticais" aria-hidden="true"></div>
             <div class="tabuleiro-bloco">
               <div id="tabuleiro" class="tabuleiro" role="grid" aria-label="Tabuleiro"></div>
+              <!-- Setas e círculos (botão direito). Fica por cima das peças e não recebe cliques. -->
+              <svg id="camada-marcas" class="camada-marcas" viewBox="0 0 8 8" aria-hidden="true" focusable="false"></svg>
               <div id="coordenadas-base" class="coordenadas horizontais" aria-hidden="true"></div>
             </div>
+            <!-- Balões do chat rápido (perto de cada jogador) -->
+            <div id="balao-topo" class="balao-chat balao-topo" hidden aria-hidden="true"></div>
+            <div id="balao-base" class="balao-chat balao-base" hidden aria-hidden="true"></div>
           </div>
           <div id="barra-lado-base" class="barra-lado" data-pos="base">
             <span class="barra-nome"></span>
             <span class="barra-meta"><span class="barra-cor"></span><span class="barra-tempo"></span></span>
+          </div>
+          <!-- Revisão da partida: navegação lance a lance (também pelas setas do teclado) -->
+          <div id="barra-revisao" class="barra-revisao" hidden role="toolbar" aria-label="Revisar partida">
+            <button type="button" class="botao botao-icone" data-revisao="primeiro" title="Primeiro (Home)" aria-label="Primeiro lance">⏮</button>
+            <button type="button" class="botao botao-icone" data-revisao="anterior" title="Anterior (←)" aria-label="Lance anterior">◀</button>
+            <span id="texto-revisao" class="texto-revisao" aria-live="polite">Início</span>
+            <button type="button" class="botao botao-icone" data-revisao="proximo" title="Próximo (→)" aria-label="Próximo lance">▶</button>
+            <button type="button" class="botao botao-icone" data-revisao="ultimo" title="Último (End)" aria-label="Último lance">⏭</button>
+            <button type="button" class="botao botao-icone botao-fechar-revisao" data-revisao="sair" title="Sair da revisão (Esc)" aria-label="Sair da revisão">✕</button>
           </div>
           <div id="fantasma" class="fantasma" hidden></div>
         </section>
@@ -211,54 +278,108 @@
             <p id="status-jogo" class="status-jogo" role="status"></p>
             <p id="modo-atual" class="modo-atual">Modo: Livre (sem tempo)</p>
             <p id="sua-cor" class="modo-atual" hidden></p>
+            <p id="aviso-prelance" class="aviso-prelance" hidden></p>
             <p id="legenda-impostor" class="legenda-impostor" hidden>
               <span class="legenda-item"><span class="amostra-selo" aria-hidden="true">♝</span> função real (só você vê nas suas)</span>
               <span class="legenda-item"><span class="amostra-revelada" aria-hidden="true"></span> peça revelada (todos veem)</span>
             </p>
           </div>
 
-          <div id="cartao-relogios" class="cartao relogios-cartao" hidden>
-            <p class="rotulo">Relógios</p>
-            <div class="relogios">
-              <div id="relogio-w" class="relogio" data-lado="w">
-                <div class="relogio-info">
-                  <span class="relogio-lado">Brancas</span>
-                  <span class="relogio-nome" id="nome-rel-w"></span>
+          <!-- Subabas do painel: só as ações principais ficam na aba "Partida" -->
+          <div class="abas" role="tablist" aria-label="Painel da partida">
+            <button type="button" class="aba" role="tab" id="aba-partida" data-aba="partida" aria-selected="true" aria-controls="painel-partida">Partida</button>
+            <button type="button" class="aba" role="tab" id="aba-historico" data-aba="historico" aria-selected="false" aria-controls="painel-historico">Histórico</button>
+            <button type="button" class="aba" role="tab" id="aba-chat" data-aba="chat" aria-selected="false" aria-controls="painel-chat" hidden>Chat<span id="chat-nao-lidas" class="contador-aba" hidden>0</span></button>
+            <button type="button" class="aba" role="tab" id="aba-opcoes" data-aba="opcoes" aria-selected="false" aria-controls="painel-opcoes">Opções</button>
+          </div>
+
+          <!-- Aba Partida: relógios, capturas e as ações principais -->
+          <div id="painel-partida" class="painel-aba" role="tabpanel" aria-labelledby="aba-partida">
+            <div id="cartao-relogios" class="cartao relogios-cartao" hidden>
+              <p class="rotulo">Relógios</p>
+              <div class="relogios">
+                <div id="relogio-w" class="relogio" data-lado="w">
+                  <div class="relogio-info">
+                    <span class="relogio-lado">Brancas</span>
+                    <span class="relogio-nome" id="nome-rel-w"></span>
+                  </div>
+                  <span id="rel-brancas" class="relogio-tempo" data-ms="0">10:00</span>
                 </div>
-                <span id="rel-brancas" class="relogio-tempo" data-ms="0">10:00</span>
-              </div>
-              <div id="relogio-b" class="relogio" data-lado="b">
-                <div class="relogio-info">
-                  <span class="relogio-lado">Pretas</span>
-                  <span class="relogio-nome" id="nome-rel-b"></span>
+                <div id="relogio-b" class="relogio" data-lado="b">
+                  <div class="relogio-info">
+                    <span class="relogio-lado">Pretas</span>
+                    <span class="relogio-nome" id="nome-rel-b"></span>
+                  </div>
+                  <span id="rel-pretas" class="relogio-tempo" data-ms="0">10:00</span>
                 </div>
-                <span id="rel-pretas" class="relogio-tempo" data-ms="0">10:00</span>
               </div>
             </div>
-          </div>
 
-          <div class="cartao capturas-cartao">
-            <p class="rotulo">Peças capturadas</p>
-            <div class="linha-capturas">
-              <span class="captura-lado">Pretas</span>
-              <div id="capturadas-pretas" class="capturadas" aria-label="Peças pretas capturadas"></div>
+            <div class="cartao capturas-cartao">
+              <p class="rotulo">Peças capturadas</p>
+              <div class="linha-capturas">
+                <span class="captura-lado">Pretas</span>
+                <div id="capturadas-pretas" class="capturadas" aria-label="Peças pretas capturadas"></div>
+              </div>
+              <div class="linha-capturas">
+                <span class="captura-lado">Brancas</span>
+                <div id="capturadas-brancas" class="capturadas" aria-label="Peças brancas capturadas"></div>
+              </div>
             </div>
-            <div class="linha-capturas">
-              <span class="captura-lado">Brancas</span>
-              <div id="capturadas-brancas" class="capturadas" aria-label="Peças brancas capturadas"></div>
+
+            <div class="acoes acoes-principais">
+              <button type="button" id="btn-revisar" class="botao botao-principal" hidden>🔍 Revisar partida</button>
+              <button type="button" id="btn-limpar-marcas-rapido" class="botao" hidden>🧹 Limpar marcações</button>
+              <button type="button" id="btn-revanche" class="botao botao-principal" hidden>Revanche</button>
+              <button type="button" id="btn-desistir" class="botao" hidden>🏳️ Desistir</button>
+              <button type="button" id="btn-empate" class="botao" hidden>🤝 Propor empate</button>
+              <button type="button" id="btn-novo" class="botao botao-principal">Novo jogo</button>
             </div>
           </div>
 
-          <div class="cartao historico-cartao">
-            <p class="rotulo">Histórico de lances</p>
-            <ol id="historico" class="historico" aria-live="polite"></ol>
+          <!-- Aba Histórico: lances (clique num lance para revisar, depois do fim) -->
+          <div id="painel-historico" class="painel-aba" role="tabpanel" aria-labelledby="aba-historico" hidden>
+            <div class="cartao historico-cartao">
+              <p class="rotulo">Histórico de lances</p>
+              <ol id="historico" class="historico" aria-live="polite"></ol>
+              <p id="dica-historico" class="ajuda-config" hidden>Toque num lance para ver a posição.</p>
+            </div>
           </div>
 
-          <div class="acoes">
-            <button type="button" id="btn-novo" class="botao botao-principal">Novo jogo</button>
-            <button type="button" id="btn-desfazer" class="botao" title="Desfazer também restaura o tempo que havia no relógio antes do lance. Indisponível nas partidas online.">Desfazer jogada</button>
-            <button type="button" id="btn-girar" class="botao">Girar tabuleiro</button>
-            <button type="button" id="btn-inicio" class="botao">Voltar ao início</button>
+          <!-- Aba Chat: só frases prontas e emojis -->
+          <div id="painel-chat" class="painel-aba" role="tabpanel" aria-labelledby="aba-chat" hidden>
+            <div class="cartao chat-cartao">
+              <div class="chat-topo">
+                <p class="rotulo">Chat rápido</p>
+                <label class="opcao-check opcao-check-mini"><input type="checkbox" id="cfg-chat-mudo"> Silenciar</label>
+              </div>
+              <ol id="chat-registro" class="chat-registro" aria-live="polite"></ol>
+              <p id="chat-aviso" class="ajuda-config" hidden></p>
+              <div id="chat-frases" class="chat-frases" role="group" aria-label="Frases prontas"></div>
+              <div id="chat-emojis" class="chat-emojis" role="group" aria-label="Emojis"></div>
+            </div>
+          </div>
+
+          <!-- Aba Opções: o que não precisa ficar à vista -->
+          <div id="painel-opcoes" class="painel-aba" role="tabpanel" aria-labelledby="aba-opcoes" hidden>
+            <div class="cartao opcoes-cartao">
+              <div class="grade-opcoes-jogo">
+                <button type="button" id="btn-girar" class="botao">🔄 Girar tabuleiro</button>
+                <button type="button" id="btn-desfazer" class="botao" title="Desfazer também restaura o tempo que havia no relógio antes do lance. Indisponível nas partidas online.">↩️ Desfazer</button>
+                <button type="button" id="btn-som-rapido" class="botao" aria-pressed="true">🔊 Som</button>
+                <button type="button" id="btn-config-completa" class="botao">⚙️ Configurações</button>
+                <button type="button" id="btn-prelance" class="botao" aria-pressed="true" title="Na vez do adversário, agende o seu próximo lance (online e contra o bot)">⚡ Pré-lance: ligado</button>
+                <button type="button" id="btn-limpar-marcas" class="botao" title="Apaga as setas e círculos do tabuleiro">🧹 Limpar marcações</button>
+              </div>
+              <p class="ajuda-config ajuda-marcas">Botão direito: arraste para desenhar uma seta ou clique para marcar a casa (Shift = vermelho, Ctrl/Alt = azul, Shift+Ctrl = amarelo). No celular, segure o dedo numa casa. Um clique comum limpa.</p>
+              <p class="rotulo-slider">Estilo das peças</p>
+              <div class="grade-opcoes grade-opcoes-3" role="radiogroup" aria-label="Estilo das peças">
+                <button type="button" class="botao-opcao" data-estilo-rapido="classico">Clássico</button>
+                <button type="button" class="botao-opcao" data-estilo-rapido="pixel">Pixel</button>
+                <button type="button" class="botao-opcao" data-estilo-rapido="unicode">Simples</button>
+              </div>
+              <button type="button" id="btn-inicio" class="botao botao-sair">Voltar ao início</button>
+            </div>
           </div>
         </aside>
       </main>
@@ -307,6 +428,30 @@
       </section>
       <div class="acoes-modal acoes-modos">
         <button type="button" id="btn-modos-cancelar" class="botao">Cancelar</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Novo jogo contra o bot (aberto pelo "Novo jogo" durante uma partida contra o bot) -->
+  <div id="modal-bot" class="modal" hidden>
+    <div class="modal-caixa modal-modos" role="dialog" aria-modal="true" aria-labelledby="titulo-bot">
+      <h2 id="titulo-bot">🤖 Nova partida contra o bot</h2>
+      <p class="modal-ajuda">Escolha a sua cor e a dificuldade. O bot joga só o xadrez clássico.</p>
+      <div class="seletor-cor-bot" role="radiogroup" aria-label="Sua cor contra o bot">
+        <span class="rotulo-mini">Você joga de</span>
+        <div class="segmentos">
+          <button type="button" class="segmento" data-cor-bot="w" aria-pressed="true">♔ Brancas</button>
+          <button type="button" class="segmento" data-cor-bot="b" aria-pressed="false">♚ Pretas</button>
+          <button type="button" class="segmento" data-cor-bot="aleatoria" aria-pressed="false">🎲</button>
+        </div>
+      </div>
+      <div class="grade-niveis" role="group" aria-label="Dificuldade">
+        <button type="button" class="botao botao-nivel" data-nivel="facil"><strong>Fácil</strong><small>Joga solto</small></button>
+        <button type="button" class="botao botao-nivel" data-nivel="medio"><strong>Médio</strong><small>Pensa 2 lances</small></button>
+        <button type="button" class="botao botao-nivel" data-nivel="dificil"><strong>Difícil</strong><small>Pensa até 4</small></button>
+      </div>
+      <div class="acoes-modal acoes-modos">
+        <button type="button" id="btn-bot-cancelar" class="botao">Cancelar</button>
       </div>
     </div>
   </div>
@@ -419,17 +564,23 @@
         <section class="grupo-config">
           <h3>Estilo das peças</h3>
           <div class="grade-opcoes" role="radiogroup" aria-label="Estilo das peças">
-            <button type="button" class="botao-opcao" data-cfg="estiloPecas" data-valor="unicode">Unicode</button>
-            <button type="button" class="botao-opcao" data-cfg="estiloPecas" data-valor="staunton">Staunton</button>
-            <button type="button" class="botao-opcao" data-cfg="estiloPecas" data-valor="pixelado">Pixelado</button>
+            <button type="button" class="botao-opcao" data-cfg="estiloPecas" data-valor="classico">Clássico</button>
+            <button type="button" class="botao-opcao" data-cfg="estiloPecas" data-valor="pixel">Pixel</button>
+            <button type="button" class="botao-opcao" data-cfg="estiloPecas" data-valor="unicode">Simples</button>
           </div>
           <div id="amostra-pecas" class="amostra-pecas" aria-hidden="true"></div>
+          <p class="ajuda-config">Clássico: peças lisas, estilo vetor. Pixel: 8-bit. Simples: símbolos de texto, mais leves.</p>
         </section>
 
         <section class="grupo-config">
           <h3>Tabuleiro</h3>
           <label class="opcao-check"><input type="checkbox" id="cfg-dicas" checked> Mostrar dicas de lances legais</label>
           <label class="opcao-check"><input type="checkbox" id="cfg-coordenadas" checked> Mostrar coordenadas (a–h, 1–8)</label>
+        </section>
+
+        <section class="grupo-config">
+          <h3>Chat</h3>
+          <label class="opcao-check"><input type="checkbox" id="cfg-chat-mudo-geral"> Silenciar o chat rápido (não mostrar as mensagens do oponente)</label>
         </section>
       </div>
       <div class="acoes-modal acoes-modos">
@@ -469,6 +620,10 @@
   <script src="/socket.io/socket.io.js"></script>
   <script src="chess-engine.js"></script>
   <script src="impostor-engine.js"></script>
+  <script src="chat-rapido.js"></script>
+  <script src="bot.js"></script>
+  <script src="prelance.js"></script>
+  <script src="marcacoes.js"></script>
   <script src="pecas.js"></script>
   <script src="sons.js"></script>
   <script src="script.js"></script>

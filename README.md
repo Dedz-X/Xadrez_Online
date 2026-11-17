@@ -2,7 +2,7 @@
 
 ![Logo](public/logo.svg)
 
-Jogo de xadrez para dois jogadores, com o modo alternativo **Impostor**: **partida local** no mesmo computador ou **partida online** em salas com código. O servidor (Node.js + Express + Socket.IO) é a autoridade das regras e dos relógios. O cliente roda no navegador, sem etapa de compilação.
+Jogo de xadrez com o modo alternativo **Impostor**: **partida local** no mesmo computador, **contra o bot**, **partida online** em salas com código (com chat rápido) e **modo espectador**. O servidor (Node.js + Express + Socket.IO) é a autoridade das regras e dos relógios. O cliente roda no navegador, sem etapa de compilação.
 
 Modos: **Livre (sem tempo)**, **Rápido 10 min** e **Blitz 3 min** (sem acréscimo).
 Variantes online: **Clássico** e **Impostor** (funções secretas — veja abaixo).
@@ -49,7 +49,16 @@ Para encerrar o servidor, pressione `Ctrl+C` na janela em que ele está rodando.
 
 - **Abertura:** a primeira tela mostra o logo, o nome e o botão **Jogar**. Na primeira vez ele leva à tela do nome; depois, direto ao menu. Quem abre um link de convite (`?sala=CODIGO`) pula a abertura.
 
-- **Jogar local:** os dois usam o mesmo computador (hot-seat). As brancas começam. Desfazer, girar o tabuleiro, temas e animações funcionam como na versão offline.
+- **Início:** quatro cartões — **Jogar online**, **Contra o bot**, **Local (mesmo PC)** e **Assistir**. Cada um começa a ação com um toque.
+- **Local (mesmo PC):** os dois usam o mesmo computador (hot-seat). Escolha Livre, Rápido 10 min ou Blitz 3 min direto no cartão. As brancas começam.
+- **Contra o bot:** escolha a sua cor (♔, ♚ ou 🎲) e a dificuldade — **Fácil** (joga solto, gosta de capturar), **Médio** (pensa 2 lances) ou **Difícil** (pensa até 4 lances, ~2 s por lance). Só xadrez clássico, sem relógio. “Desfazer” volta até a sua vez. O bot roda num Web Worker, então a página não trava enquanto ele pensa.
+- **Assistir:** digite o código de uma sala online para acompanhar ao vivo, só olhando. Se você tentar entrar numa sala que já tem dois jogadores, o site oferece assistir. Os jogadores veem quantas pessoas estão assistindo (👁️). No Impostor, o espectador só vê o que é público até a partida acabar.
+- **Painel da partida:** subabas **Partida** (relógios, capturas e as ações principais), **Histórico**, **Chat** (só online) e **Opções** (girar, desfazer, som, estilo das peças, configurações e sair).
+- **Revisar partida:** quando a partida termina (em qualquer modo), o botão **Revisar partida** abre a navegação lance a lance: ⏮ ◀ ▶ ⏭, as setas ← → do teclado (Home/End vão às pontas, Esc sai) ou um clique no lance do histórico.
+- **Chat rápido (online):** só frases prontas e emojis (o servidor confere cada mensagem e limita o envio). A mensagem aparece num balão perto do jogador e fica no registro da aba Chat. Há a opção **Silenciar**. Espectadores leem, mas não enviam.
+- **Marcações (setas e círculos):** segure o **botão direito** e arraste de uma casa para outra para desenhar uma seta; botão direito sem arrastar marca um círculo. Cores: normal **verde**, **Shift** vermelho, **Ctrl** (ou Alt) azul, **Shift+Ctrl** amarelo. Repetir a mesma marcação apaga; um clique esquerdo comum no tabuleiro (ou **🧹 Limpar marcações**) limpa tudo, e elas somem quando um lance acontece. Servem para planejar a qualquer momento — inclusive na vez do adversário e na revisão — e **só você vê**. No celular, segure o dedo ~0,5 s numa casa para marcar um círculo.
+- **Pré-lance:** online e contra o bot, na vez do adversário clique (ou arraste) o lance que você quer fazer. Ele fica marcado em rosa e é jogado sozinho logo depois do lance do adversário, se ainda for legal; senão, é cancelado sem aviso. Promoção vira dama. Só um por vez; o botão direito ou um clique numa casa vazia cancela. Ligue/desligue em **Opções → ⚡ Pré-lance**. No Impostor, vale como a sua peça anda de verdade (a função real). No modo local não há pré-lance.
+- **Estilos de peças:** **Clássico** (padrão, plano), **Pixel** (8-bit) e **Simples** (símbolos Unicode), na aba Opções ou nas Configurações.
 - **Jogar online — Criar sala:** escolha o modo de tempo e a variante (Clássico ou Impostor). Você recebe um código curto (como `K7X2Q`) e um link de convite (`?sala=CODIGO`) para copiar.
 - **Jogar online — Entrar com código:** o convidado entra com o código. Em seguida o anfitrião vê o menu **Quem joga de brancas?** (Eu de brancas, Eu de pretas ou Aleatório). O convidado espera essa escolha. A partida e os relógios só começam depois. No Aleatório, cada um vê uma revelação curta (“Você joga de Brancas/Pretas”).
 - Na partida online o servidor valida cada lance. Há **Desistir**, **Propor empate** e **Revanche**. Na revanche o menu de cores aparece de novo (com a sugestão de inverter). O desfazer fica desativado online.
@@ -117,6 +126,13 @@ a função apenas depois de revelada). O teste `test-e2e-impostor.js` confere is
 
 Abra **⚙️ Configurações** para som (ligar/desligar e volume), pacote de som (**Moderno** ou **Clássico**, com batidas de madeira), tema do tabuleiro, estilo das peças, dicas de lance e coordenadas.
 
+### Fim da partida e revisão (v1.3.0)
+
+Quando a partida termina, o servidor revela a todos (jogadores e espectadores) a
+função real de **todas** as peças, inclusive das capturadas. No tabuleiro final
+e em **Revisar partida**, cada impostora ganha um selo dourado com a função que
+ela tinha; peças sem selo eram o que pareciam.
+
 ## Publicar no Render (serviço web gratuito)
 
 1. Crie um repositório no GitHub e envie esta pasta (sem `node_modules`):
@@ -146,9 +162,9 @@ Observação: no plano gratuito o serviço pode “dormir” após um tempo sem 
 
 O histórico de versões está em [CHANGELOG.md](CHANGELOG.md).
 Este projeto segue o [Versionamento Semântico](https://semver.org/lang/pt-BR/)
-(`MAJOR.MINOR.PATCH`). A versão atual é **1.2.0**.
+(`MAJOR.MINOR.PATCH`). A versão atual é **1.3.0**.
 A fonte única da versão é o `package.json`: o servidor a expõe em `GET /versao`
-e o site mostra discretamente no canto inferior direito (ex.: `v1.2.0`).
+e o site mostra discretamente no canto inferior direito (ex.: `v1.3.0`).
 
 ## Testes do motor
 
@@ -158,11 +174,18 @@ Na pasta do projeto:
 npm test
 ```
 
-Isso roda a suíte *perft* (contagem de lances legais) do motor de xadrez e os
-testes de unidade do modo Impostor (`test-impostor.js`).
+Isso roda a suíte *perft* (contagem de lances legais) do motor de xadrez, os
+testes de unidade do modo Impostor (`test-impostor.js`), do chat rápido
+(`test-chat.js`), do bot (`test-bot.js`: legalidade dos lances, mate em 1,
+tempo por lance) e do pré-lance/marcações (`test-prelance.js`).
 
-O teste de ponta a ponta do Impostor sobe o servidor numa porta livre e joga com
-dois clientes. Ele usa o `socket.io-client`, que não é dependência do projeto:
+Os testes de ponta a ponta (`test-e2e-impostor.js` e `test-e2e-v130.js`) sobem
+o servidor numa porta livre e jogam com dois clientes e um espectador
+(espectador sem segredos, chat, revelação no fim do Impostor). O
+`test-e2e-prelance.js` abre páginas reais no Chrome com o `puppeteer-core`
+(também fora do projeto, ex.: `/tmp/sockt`, ou na variável `PUPPETEER_CORE`;
+Chrome em `CHROME_PATH`) e testa o pré-lance online, no Impostor e contra o bot,
+além das marcações; sem puppeteer/Chrome ele é pulado. Ele usa o `socket.io-client`, que não é dependência do projeto:
 instale-o fora da pasta (por exemplo em `/tmp/sockt`) ou aponte a variável
 `SOCKET_IO_CLIENT` para ele, e rode:
 
@@ -175,6 +198,11 @@ npm run test:e2e
 - `server.js` — servidor HTTP e salas Socket.IO
 - `chess-engine.js` — regras do xadrez (usado no servidor e no cliente; cópia idêntica em `public/`)
 - `impostor-engine.js` — regras do modo Impostor (cópia idêntica em `public/`)
-- `test-perft.js`, `test-impostor.js`, `test-e2e-impostor.js` — testes
+- `chat-rapido.js` — lista de frases/emojis do chat rápido e limitador de envio (cópia idêntica em `public/`)
+- `public/bot.js` e `public/bot-worker.js` — o bot (Fácil, Médio, Difícil) e o Web Worker que o roda
+- `public/pecas.js` — desenho das peças (Clássico, Pixel e Simples)
+- `public/prelance.js` — pré-lance: destinos possíveis e conferência na nova posição
+- `public/marcacoes.js` — setas e círculos do botão direito (camada SVG)
+- `test-perft.js`, `test-impostor.js`, `test-chat.js`, `test-bot.js`, `test-prelance.js`, `test-e2e-impostor.js`, `test-e2e-v130.js`, `test-e2e-prelance.js` — testes
 - `public/` — página, estilos, interface, peças SVG e sons (Web Audio)
 - `public/logo.svg` — logo (cavalo com máscara de impostor), usado também como favicon

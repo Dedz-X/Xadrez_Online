@@ -18,6 +18,15 @@
  * peças com a função real e as do oponente só com a aparência (e a função
  * apenas quando já foi revelada). Por isso os eventos com estado são enviados
  * jogador por jogador (emitirSala / emitirOponente), nunca para a sala inteira.
+ *
+ * v1.3.0
+ *  - Espectadores: quem tem o código de uma sala pode só assistir. Recebem o
+ *    estado PÚBLICO (estadoPublico(sala, null)): no Impostor, só aparências e
+ *    peças já reveladas, até a partida terminar.
+ *  - Fim do Impostor: quando a partida termina, o servidor revela tudo
+ *    (funções iniciais e tabuleiro com as funções reais) para a revisão.
+ *  - Chat rápido: só IDs de frases prontas (chat-rapido.js), com limite de
+ *    envio. Só jogadores enviam; espectadores leem.
  */
 'use strict';
 
@@ -28,6 +37,7 @@ const express = require('express');
 const { Server } = require('socket.io');
 const { Chess } = require('./chess-engine.js');
 const { JogoImpostor, fenAparente } = require('./impostor-engine.js');
+const ChatRapido = require('./chat-rapido.js');
 
 const PORT = process.env.PORT || 3000;
 const ALFABETO = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789'; // sem 0/O, 1/I/L
@@ -55,6 +65,13 @@ const MS_LIMPEZA_AGUARDANDO = 30 * 60 * 1000;
 const MS_LIMPEZA_DESCONECTADOS = 10 * 60 * 1000;
 const MS_LIMPEZA_TERMINADA = 30 * 60 * 1000;
 
+/** Espectadores por sala (proteção simples contra abuso). */
+const MAX_ESPECTADORES = 30;
+/** Quantas mensagens do chat a sala guarda (para quem entra depois). */
+const MAX_CHAT_GUARDADO = 30;
+/** Chat: até 4 mensagens a cada 10 s por jogador, com 0,7 s entre elas. */
+const limiteChat = ChatRapido.criarLimitador({ max: 4, janelaMs: 10000, intervaloMs: 700 });
+
 // ---------------------------------------------------------------------------
 // App HTTP
 // ---------------------------------------------------------------------------
@@ -66,7 +83,7 @@ app.use(express.static(path.join(__dirname, 'public'), {
   maxAge: process.env.NODE_ENV === 'production' ? '1h' : 0,
 }));
 app.get('/saude', (_req, res) => res.type('text').send('ok'));
-// Versão do site: fonte única é o package.json (o canto da tela mostra "v1.2.0").
+// Versão do site: fonte única é o package.json (o canto da tela mostra, ex., "v1.3.0").
 const VERSAO = require('./package.json').version;
 app.get('/versao', (_req, res) => res.json({ versao: VERSAO }));
 
@@ -211,19 +228,51 @@ function novoJogo(sala) {
  */
 function estadoImpostor(sala, cor) {
   const montando = sala.status === 'montando';
-  // Na montagem (e antes das cores) cada um vê só as próprias peças.
-  const esconder = montando || sala.status === 'escolhendo-cores' || sala.status === 'aguardando';
-  const tabuleiro = sala.jogo.tabuleiroPara(cor, esconder);
+  const terminou = sala.status === 'terminado';
+  // Na montagem (e antes das cores) cada JOGADOR vê só as próprias peças.
+  // O espectador (cor null) vê as aparências de todos, sem nenhuma função.
+  const esconder = !!cor && (montando || sala.status === 'escolhendo-cores' || sala.status === 'aguardando');
+  // Partida terminada: não há mais segredo, todos recebem as funções reais.
+  const tabuleiro = terminou ? sala.jogo.tabuleiroFinal() : sala.jogo.tabuleiroPara(cor, esconder);
   const pronto = sala.montagem || { w: false, b: false };
   return {
     tabuleiro: tabuleiro,
     montagem: {
       eu: !!(cor && pronto[cor]),
       oponente: !!(cor && pronto[ladoOposto(cor)]),
+      // Quem já está pronto é informação pública (o espectador também vê).
+      w: !!pronto.w,
+      b: !!pronto.b,
     },
+    // Revelação total (só no fim): função inicial de cada peça, pela casa
+    // onde ela começou. Com isso a revisão refaz a partida inteira.
+    revelacao: terminou && sala.funcoesIniciais
+      ? { funcoes: Object.assign({}, sala.funcoesIniciais.w, sala.funcoesIniciais.b) }
+      : null,
     // FEN só com as aparências visíveis (sem roque nem en passant).
     fenAparente: fenAparente(tabuleiro, sala.jogo.vez(), sala.jogo.lanceCompleto),
   };
+}
+
+/**
+ * Lista pública dos lances jogados (para a revisão da partida). No Impostor os
+ * lances do motor já são públicos (aparências e revelações), nunca funções.
+ */
+function lancesPublicos(sala) {
+  return (sala.jogo.pgn || []).map((l) => {
+    const p = {
+      from: l.from,
+      to: l.to,
+      piece: l.piece,
+      captured: l.captured || null,
+      promotion: l.promotion || null,
+      castle: l.castle || null,
+      enPassant: !!l.enPassant,
+      san: l.san,
+    };
+    if (l.revelou) p.revelou = l.revelou;
+    return p;
+  });
 }
 
 /**
@@ -247,9 +296,12 @@ function estadoPublico(sala, cor) {
     statusSala: sala.status,
     // No Impostor o FEN real revelaria as funções: mandamos só as aparências.
     fen: impostor ? extraImpostor.fenAparente : sala.jogo.fen(),
-    impostor: impostor ? { tabuleiro: extraImpostor.tabuleiro, montagem: extraImpostor.montagem } : null,
+    impostor: impostor
+      ? { tabuleiro: extraImpostor.tabuleiro, montagem: extraImpostor.montagem, revelacao: extraImpostor.revelacao }
+      : null,
     vez: sala.jogo.vez(),
     historico: sala.jogo.historicoSan(),
+    lances: lancesPublicos(sala),
     capturadas: sala.jogo.pecasCapturadas(),
     ultimoLance: sala.jogo.ultimoLance(),
     statusJogo: statusJogo,
@@ -266,6 +318,7 @@ function estadoPublico(sala, cor) {
       w: !!(sala.jogadores.w && sala.jogadores.w.conectado),
       b: !!(sala.jogadores.b && sala.jogadores.b.conectado),
     },
+    espectadores: sala.espectadores ? sala.espectadores.size : 0,
     corAnfitriao: sala.corAnfitriao || null,
     sugestaoCorAnfitriao: sala.sugestaoCorAnfitriao || 'w',
     nomes: {
@@ -288,12 +341,25 @@ function emitirSala(sala, evento, extra) {
     const cor = corDoPapel(sala, papel);
     io.to(j.socketId).emit(evento, Object.assign({}, extra || {}, { estado: estadoPublico(sala, cor) }));
   }
+  emitirEspectadores(sala, evento, extra);
+}
+
+/**
+ * Envia `evento` aos espectadores, com o estado PÚBLICO (cor null).
+ * O estado é calculado uma vez só e reaproveitado para todos.
+ */
+function emitirEspectadores(sala, evento, extra) {
+  if (!sala.espectadores || !sala.espectadores.size) return;
+  const pacote = Object.assign({}, extra || {}, { estado: estadoPublico(sala, null) });
+  for (const socketId of sala.espectadores.keys()) io.to(socketId).emit(evento, pacote);
 }
 
 /** Como emitirSala, mas só para o outro jogador (não o `papel` informado). */
 function emitirOponente(sala, papel, evento, extra) {
   const outro = papel === 'anfitriao' ? 'convidado' : 'anfitriao';
   const j = sala.participantes[outro];
+  // Os espectadores também ficam sabendo (ex.: um jogador caiu).
+  emitirEspectadores(sala, evento, extra);
   if (!j || !j.socketId) return;
   io.to(j.socketId).emit(evento, Object.assign({}, extra || {}, { estado: estadoPublico(sala, corDoPapel(sala, outro)) }));
 }
@@ -376,6 +442,12 @@ function criarSala(modoId, nome, varianteId) {
     resultado: null,
     propostaEmpatePor: null,
     revanche: { anfitriao: false, convidado: false },
+    /** socket.id → { nome } de quem está só assistindo. */
+    espectadores: new Map(),
+    /** Últimas mensagens do chat rápido: { id, cor, papel, nome, t }. */
+    chat: [],
+    /** Impostor: funções de cada lado no início da partida (revelação final). */
+    funcoesIniciais: null,
     criadoEm: Date.now(),
     ultimoEvento: Date.now(),
   };
@@ -391,8 +463,9 @@ function sentar(sala, tokenExistente, nome) {
       return { papel: achou.papel, cor: achou.cor, token: achou.jogador.token, reconectou: true };
     }
   }
-  if (sala.status === 'terminado' && !tokenExistente) return { erro: 'Esta partida já terminou.' };
-  if (sala.participantes.convidado) return { erro: 'A sala está cheia.' };
+  // Sala cheia ou partida já terminada: o cliente oferece "Assistir".
+  if (sala.status === 'terminado' && !tokenExistente) return { erro: 'Esta partida já terminou.', podeAssistir: true };
+  if (sala.participantes.convidado) return { erro: 'A sala está cheia.', podeAssistir: true };
   const token = gerarToken();
   sala.participantes.convidado = {
     token: token,
@@ -424,6 +497,10 @@ function iniciarPartidaAposCores(sala) {
 /** Coloca a partida em andamento e liga o relógio das brancas. */
 function comecarRelogioEPartida(sala) {
   sala.status = 'em_andamento';
+  if (sala.variante.id === 'impostor') {
+    // Guarda a montagem final dos dois lados (só sai do servidor no fim).
+    sala.funcoesIniciais = { w: sala.jogo.funcoesDe('w'), b: sala.jogo.funcoesDe('b') };
+  }
   sala.ultimoEvento = Date.now();
   if (sala.modo.minutos != null) {
     sala.relogio.ativo = 'w';
@@ -455,6 +532,7 @@ function irParaEscolhaDeCores(sala, sugestao) {
   sala.revanche = { anfitriao: false, convidado: false };
   sala.jogo = novoJogo(sala);
   sala.montagem = { w: false, b: false };
+  sala.funcoesIniciais = null;
   sala.relogio = novoRelogio(sala.modo);
   sala.ultimoEvento = Date.now();
   atualizarCorDosSockets(sala);
@@ -480,7 +558,20 @@ function ligarSocket(sala, papel, socket) {
   socket.join('sala:' + sala.codigo);
 }
 
+/** Tira o socket da lista de espectadores (se ele estava assistindo). */
+function sairComoEspectador(socket) {
+  const codigo = socket.data && socket.data.assistindo;
+  if (!codigo) return;
+  socket.data.assistindo = null;
+  socket.leave('sala:' + codigo);
+  const sala = salas.get(codigo);
+  if (!sala || !sala.espectadores.delete(socket.id)) return;
+  // Os jogadores (e os outros espectadores) veem o novo número.
+  io.to('sala:' + codigo).emit('espectadores', { quantidade: sala.espectadores.size });
+}
+
 function desconectarSocket(socket) {
+  sairComoEspectador(socket);
   const codigo = socket.data && socket.data.codigo;
   const token = socket.data && socket.data.token;
   if (!codigo || !token) return;
@@ -569,6 +660,7 @@ io.on('connection', (socket) => {
       if (varianteId != null && !VARIANTES[varianteId]) {
         return socket.emit('erro', { mensagem: 'Variante inválida.' });
       }
+      sairComoEspectador(socket);
       const criado = criarSala(modoId, dados && dados.nome, varianteId);
       ligarSocket(criado.sala, criado.papel, socket);
       socket.emit('entrouSala', {
@@ -577,6 +669,7 @@ io.on('connection', (socket) => {
         papel: criado.papel,
         token: criado.token,
         estado: estadoPublico(criado.sala, null),
+        chat: [],
         criador: true,
       });
     } catch (e) {
@@ -594,7 +687,10 @@ io.on('connection', (socket) => {
     if (!sala) return socket.emit('erro', { mensagem: 'Sala não encontrada.' });
 
     const lugar = sentar(sala, token || null, dados && dados.nome);
-    if (lugar.erro) return socket.emit('erro', { mensagem: lugar.erro });
+    if (lugar.erro) {
+      return socket.emit('erro', { mensagem: lugar.erro, podeAssistir: !!lugar.podeAssistir, codigo: sala.codigo });
+    }
+    sairComoEspectador(socket);
 
     const acabouDeCompletar = !lugar.reconectou && lugar.papel === 'convidado' && sala.status === 'aguardando';
     ligarSocket(sala, lugar.papel, socket);
@@ -609,6 +705,7 @@ io.on('connection', (socket) => {
       estado: estadoPublico(sala, corDoPapel(sala, lugar.papel)),
       criador: lugar.papel === 'anfitriao',
       reconectou: !!lugar.reconectou,
+      chat: sala.chat.slice(),
     });
     if (acabouDeCompletar || sala.status === 'escolhendo-cores') {
       emitirSala(sala, 'escolherCores', {
@@ -635,6 +732,7 @@ io.on('connection', (socket) => {
     if (!achou) return socket.emit('erro', { mensagem: 'Esta identidade não pertence à sala.' });
 
     verificarFlag(sala);
+    sairComoEspectador(socket);
     aplicarNome(achou.jogador, dados && dados.nome);
     ligarSocket(sala, achou.papel, socket);
     socket.emit('entrouSala', {
@@ -645,6 +743,7 @@ io.on('connection', (socket) => {
       estado: estadoPublico(sala, achou.cor),
       criador: achou.papel === 'anfitriao',
       reconectou: true,
+      chat: sala.chat.slice(),
     });
     if (sala.status === 'escolhendo-cores') {
       socket.emit('escolherCores', {
@@ -699,6 +798,8 @@ io.on('connection', (socket) => {
         estado: estadoPublico(sala, cor),
       });
     }
+    // Quem assiste também precisa saber que as cores foram definidas.
+    emitirEspectadores(sala, 'estado');
   });
 
   // -------------------------------------------------------------------------
@@ -865,6 +966,64 @@ io.on('connection', (socket) => {
     } else {
       emitirEstado(sala);
     }
+  });
+
+  // -------------------------------------------------------------------------
+  // Modo espectador
+  // -------------------------------------------------------------------------
+
+  socket.on('assistirSala', (dados) => {
+    if (!dentroDaTaxa(socket, 12, 10000)) return socket.emit('erro', { mensagem: 'Muitas tentativas. Espere um instante.' });
+    const codigo = dados && String(dados.codigo || '').toUpperCase().trim();
+    if (!codigoValido(codigo)) return socket.emit('erro', { mensagem: 'Código de sala inválido.' });
+    const sala = salas.get(codigo);
+    if (!sala) return socket.emit('erro', { mensagem: 'Sala não encontrada.' });
+    if (socket.data.codigo) return socket.emit('erro', { mensagem: 'Você já está jogando em uma sala.' });
+    if (sala.espectadores.size >= MAX_ESPECTADORES && !sala.espectadores.has(socket.id)) {
+      return socket.emit('erro', { mensagem: 'Esta sala já tem espectadores demais.' });
+    }
+    sairComoEspectador(socket);
+    sala.espectadores.set(socket.id, { nome: sanitizarNome(dados && dados.nome) || null });
+    socket.data.assistindo = codigo;
+    // Entra na sala do socket.io só para o relógio e o chat (eventos sem segredo).
+    socket.join('sala:' + codigo);
+    sala.ultimoEvento = Date.now();
+    socket.emit('entrouComoEspectador', {
+      codigo: codigo,
+      estado: estadoPublico(sala, null),
+      chat: sala.chat.slice(),
+    });
+    io.to('sala:' + codigo).emit('espectadores', { quantidade: sala.espectadores.size });
+  });
+
+  socket.on('pararDeAssistir', () => sairComoEspectador(socket));
+
+  // -------------------------------------------------------------------------
+  // Chat rápido (só jogadores enviam; todos na sala recebem)
+  // -------------------------------------------------------------------------
+
+  socket.on('chat', (dados) => {
+    const sala = salas.get(socket.data.codigo);
+    const papel = socket.data.papel;
+    if (!sala || !papel) return socket.emit('chatRecusado', { motivo: 'Só os jogadores podem usar o chat.' });
+    const msg = ChatRapido.mensagemPorId(dados && dados.id);
+    if (!msg) return socket.emit('chatRecusado', { motivo: 'Mensagem inválida.' });
+    // O limite é por jogador (token), para não burlar trocando de aba.
+    if (!limiteChat(socket.data.token || socket.id)) {
+      return socket.emit('chatRecusado', { motivo: 'Calma! Espere um pouco para mandar outra mensagem.' });
+    }
+    const j = sala.participantes[papel];
+    const item = {
+      id: msg.id,
+      papel: papel,
+      cor: corDoPapel(sala, papel),
+      nome: (j && j.nome) || null,
+      t: Date.now(),
+    };
+    sala.chat.push(item);
+    if (sala.chat.length > MAX_CHAT_GUARDADO) sala.chat.shift();
+    sala.ultimoEvento = Date.now();
+    io.to('sala:' + sala.codigo).emit('chatMensagem', item);
   });
 
   socket.on('sairSala', () => {

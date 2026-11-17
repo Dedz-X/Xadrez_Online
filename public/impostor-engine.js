@@ -561,6 +561,16 @@
         return v;
       });
     }
+
+    /**
+     * Tabuleiro com TODAS as funções reais, para o fim da partida (v1.3.0).
+     * Só é enviado pelo servidor quando a partida já terminou: aí não há mais
+     * segredo, e a revisão mostra quem era cada peça. Mesmo formato de
+     * tabuleiroPara, sempre com f (função), m (moveu) e id (casa inicial).
+     */
+    tabuleiroFinal() {
+      return this.board.map((p) => (p ? { c: p.cor, a: p.aparencia, r: !!p.revelada, f: p.funcao, m: !!p.moveu, id: p.id } : null));
+    }
   }
 
   // -------------------------------------------------------------------------
