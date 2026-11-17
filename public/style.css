@@ -1031,7 +1031,7 @@ h1 {
   .cabecalho { padding-top: 0; }
   .cabecalho h1 { font-size: 1.05rem; margin: 0; }
   .subtitulo { display: none; }
-  .logo-peca { width: 1.7rem; height: 1.7rem; font-size: 1.05rem; }
+  .logo-peca, .logo-img { width: 1.7rem; height: 1.7rem; font-size: 1.05rem; }
 
   .faixa-online {
     padding: 0.25rem 0.5rem;
@@ -1580,4 +1580,585 @@ h1 {
 @media (max-width: 860px) {
   .area-tabuleiro .barra-lado { display: flex; }
   .relogios-cartao { display: none; }
+}
+
+/* ========================================================================
+   v1.2.0 — Modo Impostor
+   ======================================================================== */
+
+/* Cor própria do modo (contorno das peças reveladas e selos). */
+:root { --impostor: #c74bff; --impostor-texto: #fff; }
+
+.opcao-detalhe { font-weight: 500; color: var(--texto-suave); font-size: 0.85rem; }
+
+/* Barra da montagem (acima do tabuleiro). */
+.barra-montagem {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.8rem 1.2rem;
+  flex-wrap: wrap;
+  margin-bottom: 1rem;
+  padding: 0.8rem 1rem;
+  border-color: var(--impostor);
+  box-shadow: 0 0 0 1px var(--impostor) inset;
+}
+.barra-montagem[hidden] { display: none; }
+.barra-montagem h2 { margin: 0 0 0.2rem; font-size: 1.05rem; }
+.barra-montagem .modal-ajuda { margin: 0 0 0.3rem; }
+.montagem-texto { flex: 1 1 18rem; min-width: 0; }
+.status-montagem { margin: 0; font-weight: 700; color: var(--destaque); }
+.status-montagem.pronto { color: #57d38c; }
+.montagem-acoes { display: flex; gap: 0.5rem; flex-wrap: wrap; }
+.montagem-acoes .botao { min-height: 44px; min-width: 6.5rem; }
+
+/* Selo com a função real, no canto da casa (fora do .peca). */
+.selo-funcao {
+  position: absolute;
+  top: 3%;
+  right: 3%;
+  z-index: 3;
+  display: grid;
+  place-items: center;
+  width: 38%;
+  height: 38%;
+  border-radius: 50%;
+  font-family: var(--fonte-peca);
+  font-size: calc(var(--tamanho-tabuleiro) / 30);
+  line-height: 1;
+  color: #fff;
+  background: rgba(20, 22, 28, 0.82);
+  border: 1px solid rgba(255, 255, 255, 0.55);
+  pointer-events: none;
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.45);
+}
+.selo-funcao.selo-revelado {
+  background: var(--impostor);
+  color: var(--impostor-texto);
+  border-color: #fff;
+}
+
+/* Peça revelada: contorno colorido visível para os dois jogadores. */
+.casa.peca-revelada { box-shadow: inset 0 0 0 3px var(--impostor); }
+/* Peça nossa disfarçada: contorno tracejado discreto (só nós vemos). */
+.casa.peca-disfarcada .peca { filter: drop-shadow(0 0 2px rgba(199, 75, 255, 0.9)) drop-shadow(0 2px 1px rgba(0, 0, 0, 0.35)); }
+
+/* Legenda no painel. */
+.legenda-impostor {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.35rem 0.9rem;
+  margin: 0.55rem 0 0;
+  font-size: 0.8rem;
+  color: var(--texto-suave);
+}
+.legenda-impostor[hidden] { display: none; }
+.legenda-item { display: inline-flex; align-items: center; gap: 0.35rem; }
+.amostra-selo {
+  display: inline-grid;
+  place-items: center;
+  width: 1.2rem;
+  height: 1.2rem;
+  border-radius: 50%;
+  background: rgba(20, 22, 28, 0.82);
+  border: 1px solid rgba(255, 255, 255, 0.55);
+  color: #fff;
+  font-family: var(--fonte-peca);
+  font-size: 0.8rem;
+}
+.amostra-revelada {
+  display: inline-block;
+  width: 1.1rem;
+  height: 1.1rem;
+  border-radius: 3px;
+  box-shadow: inset 0 0 0 3px var(--impostor);
+}
+
+/* ========================================================================
+   v1.2.0 — Ajustes de responsividade (teste em 8 resoluções)
+   ======================================================================== */
+
+/* Engrenagem: alvo de toque ≥ 44px e abaixo dos modais abertos (z-index 80). */
+.botao-config {
+  width: 2.85rem;
+  height: 2.85rem;
+  z-index: 70;
+}
+/* O título não passa por baixo da engrenagem. */
+.cabecalho { padding-right: 3.4rem; }
+
+/* Alvos de toque maiores. */
+.botao-estreito { min-height: 44px; padding: 0.45rem 0.85rem; }
+.botao-toggle-som { min-height: 44px; padding: 0.3rem 0.2rem; }
+.slider { height: 44px; margin: 0; }
+
+/* Configurações: título e "Fechar" fixos; só o conteúdo rola. */
+.modal-config {
+  display: flex;
+  flex-direction: column;
+  max-height: min(92dvh, 92vh, 820px);
+  overflow: hidden;
+  padding-bottom: 0.9rem;
+}
+.modal-config > h2 { flex: 0 0 auto; }
+.config-corpo {
+  flex: 1 1 auto;
+  min-height: 0;
+  overflow-y: auto;
+  -webkit-overflow-scrolling: touch;
+  overscroll-behavior: contain;
+  margin: 0 -0.4rem;
+  padding: 0.2rem 0.4rem;
+}
+.modal-config > .acoes-modal {
+  flex: 0 0 auto;
+  margin-top: 0.6rem;
+  padding-top: 0.6rem;
+  border-top: 1px solid var(--borda);
+}
+.modal-config > .acoes-modal .botao { min-height: 44px; }
+
+/* Celular/tablet em pé: o tabuleiro também respeita a altura da tela, para
+   que as duas barras de jogador (com o relógio) caibam sem rolar. */
+@media (max-width: 860px) and (orientation: portrait) {
+  :root {
+    --tamanho-tabuleiro: min(
+      calc(100vw - 2.6rem - env(safe-area-inset-left, 0px) - env(safe-area-inset-right, 0px)),
+      calc(100dvh - 17.5rem - env(safe-area-inset-top, 0px) - env(safe-area-inset-bottom, 0px))
+    );
+  }
+  .tela-jogo .cabecalho { margin-bottom: 0.45rem; }
+  .tela-jogo .subtitulo { display: none; }
+  .tela-jogo .logo-img, .tela-jogo .logo-peca { width: 2.1rem; height: 2.1rem; font-size: 1.2rem; }
+  .tela-jogo .cabecalho h1 { margin: 0; font-size: 1.15rem; }
+  .faixa-online { gap: 0.4rem 0.6rem; padding: 0.45rem 0.6rem; margin-bottom: 0.55rem; }
+  .acoes-online .botao { padding-left: 0.7rem; padding-right: 0.7rem; }
+  .barra-montagem { padding: 0.6rem 0.75rem; margin-bottom: 0.55rem; }
+  .barra-montagem .modal-ajuda { font-size: 0.8rem; }
+  .montagem-acoes { width: 100%; }
+  .montagem-acoes .botao { flex: 1 1 0; }
+}
+
+/* Celular deitado (pouca altura): tabuleiro à esquerda do tamanho da altura,
+   e faixa da sala + painel numa coluna à direita que rola sozinha. */
+@media (orientation: landscape) and (max-height: 520px) {
+  :root {
+    --tamanho-tabuleiro: min(
+      calc(100dvh - 6.3rem - env(safe-area-inset-top, 0px) - env(safe-area-inset-bottom, 0px)),
+      calc(100vw - 19rem - env(safe-area-inset-left, 0px) - env(safe-area-inset-right, 0px))
+    );
+  }
+  .tela-jogo .app {
+    max-width: none;
+    display: grid;
+    grid-template-columns: auto minmax(0, 1fr);
+    column-gap: 0.75rem;
+    align-items: start;
+    padding: 0.35rem max(0.6rem, env(safe-area-inset-right, 0px)) 0.4rem max(0.6rem, env(safe-area-inset-left, 0px));
+  }
+  /* .principal "some" do layout: tabuleiro e painel viram itens da grade. */
+  .tela-jogo .principal { display: contents; }
+  .tela-jogo .cabecalho { display: none; }
+  .tela-jogo .area-tabuleiro {
+    grid-column: 1;
+    grid-row: 1 / span 6;
+    position: sticky;
+    top: 0.35rem;
+    flex-direction: column;
+    align-items: center;
+    gap: 0.25rem;
+  }
+  .tela-jogo .faixa-online,
+  .tela-jogo .overlay-espera,
+  .tela-jogo .barra-montagem,
+  .tela-jogo .painel { grid-column: 2; min-width: 0; }
+  /* A faixa da sala não fica embaixo da engrenagem. */
+  .tela-jogo .faixa-online { margin: 0 3.3rem 0.45rem 0; padding: 0.3rem 0.5rem; gap: 0.35rem 0.5rem; }
+  .tela-jogo .barra-montagem { margin-bottom: 0.45rem; padding: 0.5rem 0.65rem; }
+  .tela-jogo .barra-montagem h2 { font-size: 0.95rem; }
+  .tela-jogo .barra-montagem .modal-ajuda { font-size: 0.78rem; }
+  .tela-jogo .overlay-espera { margin-bottom: 0.45rem; }
+  .area-tabuleiro .barra-lado { display: flex; min-height: 1.9rem; padding: 0.15rem 0.5rem; }
+  .relogios-cartao { display: none; }
+  .tabuleiro-bloco { gap: 0.15rem; }
+  .painel { gap: 0.5rem; }
+  .historico-cartao { max-height: 9rem; min-height: 0; }
+
+  /* Telas de nome e de início compactas, para caber sem rolar. */
+  .tela-inicio { min-height: 0; padding: 0.6rem 4rem 0.8rem 1rem; }
+  .cabecalho-inicio { margin-bottom: 0.6rem; }
+  .cabecalho-inicio .subtitulo { display: none; }
+  .grade-inicio { grid-template-columns: 1fr 1fr; gap: 0.7rem; }
+  .cartao-inicio { padding: 0.8rem 1rem; }
+  .cartao-inicio p { margin-bottom: 0.6rem; }
+  .form-entrar { margin-top: 0.6rem; }
+  .cartao-nome { padding: 0.8rem 1rem; }
+  .cartao-nome h2 { margin: 0 0 0.2rem; }
+  .cartao-nome p { margin: 0 0 0.4rem; }
+  .cartao-nome .acoes { margin-top: 0.5rem !important; }
+  .botao-config { top: 0.4rem; right: 0.5rem; }
+}
+
+/* Telas largas (Full HD e ultrawide): tabuleiro e painel maiores. */
+@media (min-width: 1600px) and (min-height: 900px) {
+  :root { --tamanho-tabuleiro: min(74vh, calc(100vw - 2.5rem), 800px); }
+  .tela-jogo .app { max-width: 1440px; }
+  .principal { grid-template-columns: minmax(0, 1fr) 360px; gap: 2rem; }
+}
+@media (min-width: 2200px) and (min-height: 900px) {
+  .tela-jogo .app { max-width: 1680px; }
+  .principal { grid-template-columns: minmax(0, 1fr) 420px; }
+  .historico-cartao { max-height: 420px; }
+}
+
+/* Celular em pé: o cabeçalho tem a altura da engrenagem, então a faixa da
+   sala começa abaixo dela (sem sobreposição). */
+@media (max-width: 860px) and (orientation: portrait) {
+  .botao-config { top: 0.35rem; right: 0.45rem; }
+  .tela-jogo .cabecalho { min-height: 2.9rem; padding-top: 0; }
+}
+
+/* Na montagem do Impostor a barra ocupa espaço acima do tabuleiro: em telas
+   de computador o tabuleiro encolhe um pouco para continuar inteiro na tela. */
+@media (min-width: 861px) and (min-height: 521px) {
+  .tela-jogo.em-montagem { --tamanho-tabuleiro: min(calc(72vh - 7rem), calc(100vw - 2.5rem), 640px); }
+}
+@media (min-width: 1600px) and (min-height: 900px) {
+  .tela-jogo.em-montagem { --tamanho-tabuleiro: min(calc(74vh - 7rem), calc(100vw - 2.5rem), 800px); }
+}
+
+/* Botões com altura mínima de toque (44 px) em todas as telas. */
+.botao, .botao-opcao { min-height: 44px; }
+
+/* Texto curto da montagem: só aparece no celular/tablet em pé. */
+.ajuda-curta { display: none; margin: 0 0 0.15rem; font-weight: 700; font-size: 0.88rem; }
+
+/* Celular/tablet em pé, na montagem: barra compacta numa linha (texto curto à
+   esquerda, botões à direita) e tabuleiro um pouco menor para tudo caber. */
+@media (max-width: 860px) and (orientation: portrait) {
+  .barra-montagem { flex-wrap: nowrap; gap: 0.5rem; padding: 0.45rem 0.6rem; }
+  .barra-montagem h2, .barra-montagem .modal-ajuda { display: none; }
+  .barra-montagem .ajuda-curta { display: block; }
+  .barra-montagem .status-montagem { font-size: 0.8rem; }
+  .montagem-texto { flex: 1 1 auto; }
+  .montagem-acoes { width: auto; flex-wrap: nowrap; gap: 0.35rem; }
+  .montagem-acoes .botao { flex: 0 0 auto; min-width: 0; padding-left: 0.7rem; padding-right: 0.7rem; }
+  .tela-jogo.em-montagem {
+    --tamanho-tabuleiro: min(
+      calc(100vw - 2.6rem - env(safe-area-inset-left, 0px) - env(safe-area-inset-right, 0px)),
+      calc(100dvh - 24.25rem - env(safe-area-inset-top, 0px) - env(safe-area-inset-bottom, 0px))
+    );
+  }
+}
+
+/* ========================================================================
+   v1.2.0 — Identidade "Xadrez Alternativo" e telas de escolha
+   ======================================================================== */
+
+/* Logo (SVG com fundo próprio: funciona nos 3 temas). */
+.logo-img {
+  width: 2.75rem;
+  height: 2.75rem;
+  flex: 0 0 auto;
+  display: block;
+  filter: drop-shadow(0 3px 8px rgba(0, 0, 0, 0.35));
+}
+
+/* ---------- Tela de abertura ---------- */
+.tela-splash {
+  min-height: 100vh;
+  min-height: 100dvh;
+  display: grid;
+  place-items: center;
+  padding: 1.5rem 1.25rem;
+  background:
+    radial-gradient(circle at 50% 38%, color-mix(in srgb, var(--destaque) 16%, transparent) 0%, transparent 55%),
+    radial-gradient(circle at 70% 80%, rgba(199, 75, 255, 0.10) 0%, transparent 45%);
+}
+.splash-conteudo {
+  width: min(32rem, 100%);
+  text-align: center;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 0.9rem;
+}
+.splash-logo {
+  width: clamp(7.5rem, 26vmin, 11rem);
+  height: auto;
+  filter: drop-shadow(0 14px 30px rgba(0, 0, 0, 0.45));
+}
+.splash-titulo {
+  margin: 0.2rem 0 0;
+  font-size: clamp(1.9rem, 6.5vw, 3rem);
+  line-height: 1.05;
+  letter-spacing: 0.01em;
+}
+.splash-titulo span {
+  display: block;
+  color: var(--destaque);
+  font-weight: 800;
+}
+.splash-texto { margin: 0; color: var(--texto-suave); max-width: 26rem; }
+.botao-grande {
+  min-height: 52px;
+  padding: 0.8rem 1.6rem;
+  font-size: 1.05rem;
+  font-weight: 750;
+  border-radius: 14px;
+}
+#btn-splash-jogar { width: min(16rem, 100%); margin-top: 0.4rem; }
+
+/* Entrada suave (desligada com movimento reduzido, mais abaixo). */
+@keyframes entrar-subindo {
+  from { opacity: 0; transform: translateY(14px); }
+  to { opacity: 1; transform: none; }
+}
+@keyframes entrar-logo {
+  0% { opacity: 0; transform: scale(0.85) rotate(-8deg); }
+  70% { opacity: 1; transform: scale(1.03) rotate(1deg); }
+  100% { opacity: 1; transform: none; }
+}
+.tela-splash:not([hidden]) .splash-logo { animation: entrar-logo 0.7s cubic-bezier(0.22, 0.8, 0.28, 1) both; }
+.tela-splash:not([hidden]) .splash-titulo { animation: entrar-subindo 0.5s 0.15s ease-out both; }
+.tela-splash:not([hidden]) .splash-texto { animation: entrar-subindo 0.5s 0.25s ease-out both; }
+.tela-splash:not([hidden]) #btn-splash-jogar { animation: entrar-subindo 0.5s 0.35s ease-out both; }
+.tela-inicio:not([hidden]) .cartao-escolha { animation: entrar-subindo 0.35s ease-out both; }
+.tela-inicio:not([hidden]) .cartao-escolha + .cartao-escolha { animation-delay: 0.06s; }
+
+/* ---------- Cartões de escolha (nome, menu, cores) ---------- */
+.cartao-escolha {
+  position: relative;
+  padding: 1.3rem 1.3rem 1.2rem;
+  border-radius: 18px;
+  background:
+    linear-gradient(180deg, color-mix(in srgb, var(--painel) 92%, white 8%), var(--painel));
+  box-shadow: 0 14px 34px rgba(0, 0, 0, 0.28);
+}
+.icone-escolha {
+  display: inline-grid;
+  place-items: center;
+  width: 2.8rem;
+  height: 2.8rem;
+  margin-bottom: 0.6rem;
+  border-radius: 14px;
+  font-size: 1.45rem;
+  background: color-mix(in srgb, var(--destaque) 16%, transparent);
+  border: 1px solid color-mix(in srgb, var(--destaque) 40%, transparent);
+}
+.cartao-escolha h2 { margin: 0 0 0.35rem; font-size: 1.3rem; }
+.cartao-escolha > p { color: var(--texto-suave); }
+.cartao-escolha .acoes { display: flex; flex-direction: column; gap: 0.5rem; }
+.cartao-escolha .acoes .botao { width: 100%; }
+.cartao-nome { margin-top: 0.5rem; }
+.cartao-nome .acoes { margin-top: 1rem; }
+.rotulo-campo {
+  display: block;
+  margin: 0.8rem 0 0.35rem;
+  font-size: 0.72rem;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  color: var(--rotulo);
+  font-weight: 700;
+}
+.cartao-nome .campo-nome, .campo-codigo { min-height: 48px; border-radius: 12px; }
+.grade-inicio { align-items: stretch; }
+.cartao-inicio { display: flex; flex-direction: column; }
+.cartao-inicio .form-entrar { margin-top: auto; padding-top: 1rem; }
+.linha-codigo .botao { min-width: 6rem; }
+
+/* ---------- Criar sala: cartões de opção (rádio) ---------- */
+.modal-criar-caixa { width: min(560px, 100%); }
+.grupo-cartoes { border: 0; padding: 0; margin: 0 0 1rem; min-width: 0; }
+.grupo-cartoes legend {
+  padding: 0;
+  margin-bottom: 0.45rem;
+  font-size: 0.72rem;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  color: var(--rotulo);
+  font-weight: 700;
+}
+.grade-cartoes { display: grid; gap: 0.55rem; }
+.grade-cartoes-2 { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+.grade-cartoes-3 { grid-template-columns: repeat(3, minmax(0, 1fr)); }
+.cartao-opcao { position: relative; display: block; cursor: pointer; }
+/* O rádio cobre o cartão inteiro (invisível): clique/toque e teclado funcionam. */
+.cartao-opcao input {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  margin: 0;
+  opacity: 0;
+  cursor: pointer;
+  z-index: 1;
+}
+.cartao-opcao-corpo {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 0.15rem;
+  height: 100%;
+  min-height: 44px;
+  box-sizing: border-box;
+  padding: 0.75rem 0.8rem;
+  border-radius: 14px;
+  border: 1px solid var(--borda);
+  background: var(--botao-bg);
+  transition: border-color 0.15s ease, background 0.15s ease, transform 0.08s ease, box-shadow 0.15s ease;
+}
+.cartao-opcao:hover .cartao-opcao-corpo { background: var(--botao-hover); }
+.cartao-opcao input:checked + .cartao-opcao-corpo {
+  border-color: var(--destaque);
+  box-shadow: 0 0 0 1px var(--destaque), 0 6px 16px rgba(0, 0, 0, 0.22);
+  background: color-mix(in srgb, var(--destaque) 12%, var(--botao-bg));
+}
+.cartao-opcao-impostor input:checked + .cartao-opcao-corpo {
+  border-color: var(--impostor);
+  box-shadow: 0 0 0 1px var(--impostor), 0 6px 16px rgba(0, 0, 0, 0.22);
+  background: color-mix(in srgb, var(--impostor) 14%, var(--botao-bg));
+}
+.cartao-opcao input:focus-visible + .cartao-opcao-corpo { outline: 2px solid var(--destaque); outline-offset: 2px; }
+.cartao-opcao input:active + .cartao-opcao-corpo { transform: scale(0.98); }
+.cartao-opcao-icone { font-size: 1.4rem; line-height: 1.2; font-family: var(--fonte-peca), var(--fonte); }
+.cartao-opcao-nome { font-weight: 750; font-size: 0.98rem; }
+.cartao-opcao-desc { font-size: 0.8rem; color: var(--texto-suave); line-height: 1.3; }
+
+/* ---------- Escolha de cores ---------- */
+.cartao-cores { max-width: 34rem; margin-left: auto; margin-right: auto; padding: 1.2rem; border-radius: 18px; }
+.cartao-cores .icone-escolha { margin-left: auto; margin-right: auto; }
+.grade-escolha-cores { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 0.55rem; }
+.cartao-espera .botao.botao-cor {
+  margin-top: 0;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 0.35rem;
+  min-height: 44px;
+  padding: 0.85rem 0.6rem;
+  border-radius: 14px;
+}
+.cor-icone {
+  display: grid;
+  place-items: center;
+  width: 2.6rem;
+  height: 2.6rem;
+  border-radius: 50%;
+  font-size: 1.6rem;
+  line-height: 1;
+  font-family: var(--fonte-peca), var(--fonte);
+  background: rgba(255, 255, 255, 0.06);
+}
+.cor-icone-branca { color: #fbf6ec; text-shadow: 0 0 1px #000, 0 1px 2px rgba(0, 0, 0, 0.6); background: #3a3f4c; }
+.cor-icone-preta { color: #16181f; text-shadow: 0 0 1px rgba(255, 255, 255, 0.6); background: #d9d2c4; }
+.cor-texto { display: flex; flex-direction: column; gap: 0.1rem; }
+.cor-texto strong { font-size: 0.95rem; }
+.cor-texto small { font-size: 0.75rem; color: var(--texto-suave); font-weight: 500; }
+
+/* A escolha de cores vira um modal de verdade: cobre a tela com um fundo
+   escurecido em vez de empurrar o tabuleiro para fora da janela. */
+.tela-jogo .overlay-cores:not([hidden]) {
+  position: fixed;
+  inset: 0;
+  z-index: 60;
+  margin: 0;
+  display: grid;
+  place-items: center;
+  padding: 1rem;
+  overflow-y: auto;
+  background: rgba(5, 6, 10, 0.62);
+  backdrop-filter: blur(3px);
+}
+.tela-jogo .overlay-cores .cartao-cores { width: min(34rem, 100%); animation: entrar-subindo 0.3s ease-out both; }
+
+/* "Sugestão" vira um selinho no canto do cartão (não aperta o texto). */
+.cartao-espera .botao.botao-cor { position: relative; }
+.cartao-espera .botao-cor.sugerido::after {
+  content: "sugestão";
+  position: absolute;
+  top: 0.3rem;
+  right: 0.4rem;
+  padding: 0.05rem 0.4rem;
+  border-radius: 999px;
+  font-size: 0.6rem;
+  font-weight: 700;
+  letter-spacing: 0.03em;
+  opacity: 1;
+  color: var(--botao-principal-texto);
+  background: var(--destaque);
+}
+
+/* ---------- Barra de montagem do Impostor (acabamento) ---------- */
+.barra-montagem {
+  border-radius: 18px;
+  background:
+    linear-gradient(120deg, color-mix(in srgb, var(--impostor) 16%, var(--painel)) 0%, var(--painel) 60%);
+}
+.montagem-acoes .botao { border-radius: 12px; font-weight: 700; }
+#btn-montagem-pronto { background: linear-gradient(180deg, #d77bff, #9b2ff0); border-color: #b25cff; color: #fff; }
+#btn-montagem-pronto:hover { filter: brightness(1.08); }
+
+/* ---------- Versão no canto (discreta, atrás do conteúdo) ---------- */
+.versao-app {
+  position: fixed;
+  right: max(0.4rem, env(safe-area-inset-right, 0px));
+  bottom: max(0.25rem, env(safe-area-inset-bottom, 0px));
+  z-index: -1;
+  font-size: 0.62rem;
+  letter-spacing: 0.04em;
+  color: var(--texto-suave);
+  opacity: 0.45;
+  pointer-events: none;
+  user-select: none;
+}
+
+/* ---------- Responsivo das telas de escolha ---------- */
+@media (max-width: 560px) {
+  .grade-cartoes-3 .cartao-opcao-corpo { align-items: center; text-align: center; padding: 0.65rem 0.4rem; }
+  .grade-escolha-cores { grid-template-columns: 1fr; }
+  .cartao-espera .botao.botao-cor { flex-direction: row; justify-content: flex-start; text-align: left; padding: 0.55rem 0.8rem; gap: 0.75rem; }
+  .cor-icone { width: 2.2rem; height: 2.2rem; font-size: 1.35rem; }
+}
+@media (max-width: 380px) {
+  .grade-cartoes-2 .cartao-opcao-corpo { padding: 0.6rem 0.6rem; }
+  .cartao-opcao-desc { font-size: 0.75rem; }
+}
+/* Celular deitado: tudo compacto para caber sem rolar. */
+@media (orientation: landscape) and (max-height: 520px) {
+  .tela-splash { padding: 0.6rem 4rem; }
+  .splash-conteudo { width: min(44rem, 100%); display: grid; grid-template-columns: auto 1fr; column-gap: 1.6rem; row-gap: 0.4rem; text-align: left; align-items: center; justify-items: start; }
+  .splash-logo { grid-row: 1 / span 3; width: min(42vh, 10rem); }
+  .splash-titulo { font-size: 2rem; margin: 0; }
+  #btn-splash-jogar { margin-top: 0.2rem; }
+  .cartao-escolha { padding: 0.75rem 1rem; }
+  .icone-escolha { display: none; }
+  .cartao-escolha h2 { font-size: 1.1rem; }
+  .botao-grande { min-height: 44px; padding: 0.55rem 1.2rem; font-size: 0.98rem; }
+  .cartao-inicio .form-entrar { padding-top: 0.5rem; }
+  .rotulo-campo { margin-top: 0.4rem; }
+  .cartao-nome .acoes { margin-top: 0.5rem; }
+  .modal-criar-caixa { width: min(680px, 100%); padding: 0.9rem 1rem; }
+  .modal-criar-caixa .modal-ajuda { display: none; }
+  .grupo-cartoes { margin-bottom: 0.55rem; }
+  .cartao-opcao-corpo { padding: 0.45rem 0.6rem; }
+  .cartao-opcao-icone { font-size: 1.1rem; }
+  .cartao-opcao-desc { display: none; }
+  .grade-cartoes-3 .cartao-opcao-corpo, .grade-cartoes-2 .cartao-opcao-corpo { flex-direction: row; align-items: center; gap: 0.45rem; }
+  .cartao-cores { padding: 0.7rem 0.9rem; }
+  .cartao-cores .icone-escolha { display: none; }
+  .grade-escolha-cores { grid-template-columns: repeat(3, minmax(0, 1fr)); }
+  .cartao-espera .botao.botao-cor { flex-direction: row; padding: 0.4rem 0.6rem; gap: 0.5rem; }
+  .cor-texto small { display: none; }
+  .cor-icone { width: 2rem; height: 2rem; font-size: 1.2rem; }
+  .logo-img { width: 2rem; height: 2rem; }
+}
+/* Telas largas: menu um pouco mais largo. */
+@media (min-width: 1600px) {
+  .tela-inicio { max-width: 1040px; }
+}
+@media (prefers-reduced-motion: reduce) {
+  .tela-splash .splash-logo, .tela-splash .splash-titulo, .tela-splash .splash-texto,
+  .tela-splash #btn-splash-jogar, .tela-inicio .cartao-escolha,
+  .overlay-cores .cartao-cores { animation: none !important; }
 }

@@ -1,6 +1,6 @@
 /**
- * Servidor de xadrez online.
- * ---------------------------
+ * Servidor do Xadrez Alternativo (xadrez online).
+ * -----------------------------------------------
  * Express entrega o cliente estático em /public.
  * Socket.IO gerencia as salas. O motor (chess-engine.js) é a autoridade:
  * todo lance é validado aqui, os relógios correm com timestamps do servidor
@@ -12,6 +12,12 @@
  * Identidade: cada jogador é anfitrião ou convidado até o anfitrião
  * escolher as cores (depois que o segundo entra, e de novo na revanche).
  * Só então o relógio e a partida começam.
+ *
+ * Modo Impostor: as funções reais das peças ficam só aqui no servidor.
+ * Cada jogador recebe um estado FILTRADO (estadoPublico(sala, cor)): as próprias
+ * peças com a função real e as do oponente só com a aparência (e a função
+ * apenas quando já foi revelada). Por isso os eventos com estado são enviados
+ * jogador por jogador (emitirSala / emitirOponente), nunca para a sala inteira.
  */
 'use strict';
 
@@ -21,6 +27,7 @@ const crypto = require('crypto');
 const express = require('express');
 const { Server } = require('socket.io');
 const { Chess } = require('./chess-engine.js');
+const { JogoImpostor, fenAparente } = require('./impostor-engine.js');
 
 const PORT = process.env.PORT || 3000;
 const ALFABETO = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789'; // sem 0/O, 1/I/L
@@ -31,6 +38,17 @@ const MODOS = {
   '3+0':  { id: '3+0',    rotulo: 'Blitz 3 min',       minutos: 3,    incremento: 0 },
 };
 const ESCOLHAS_COR = new Set(['w', 'b', 'aleatoria']);
+
+/**
+ * Variantes de regra. Combinam com qualquer modo de tempo acima.
+ *  - classico: xadrez normal (motor chess-engine.js).
+ *  - impostor: funções secretas (motor impostor-engine.js). Depois das cores,
+ *    a sala passa pelo status 'montando' até os dois clicarem em Pronto.
+ */
+const VARIANTES = {
+  classico: { id: 'classico', rotulo: 'Clássico' },
+  impostor: { id: 'impostor', rotulo: 'Impostor' },
+};
 
 /** Limpeza: sala aguardando sem ninguém, ou ambos desconectados, ou partida encerrada ociosa. */
 const MS_LIMPEZA_AGUARDANDO = 30 * 60 * 1000;
@@ -48,6 +66,9 @@ app.use(express.static(path.join(__dirname, 'public'), {
   maxAge: process.env.NODE_ENV === 'production' ? '1h' : 0,
 }));
 app.get('/saude', (_req, res) => res.type('text').send('ok'));
+// Versão do site: fonte única é o package.json (o canto da tela mostra "v1.2.0").
+const VERSAO = require('./package.json').version;
+app.get('/versao', (_req, res) => res.json({ versao: VERSAO }));
 
 const servidorHttp = http.createServer(app);
 const io = new Server(servidorHttp, {
@@ -179,7 +200,39 @@ function corDoPapel(sala, papel) {
   return papel === 'anfitriao' ? sala.corAnfitriao : ladoOposto(sala.corAnfitriao);
 }
 
-function estadoPublico(sala) {
+/** Cria o motor certo para a variante da sala. */
+function novoJogo(sala) {
+  return sala.variante.id === 'impostor' ? new JogoImpostor() : new Chess();
+}
+
+/**
+ * Parte do estado só do modo Impostor, já filtrada para o jogador `cor`.
+ * Nunca inclui funções secretas do oponente.
+ */
+function estadoImpostor(sala, cor) {
+  const montando = sala.status === 'montando';
+  // Na montagem (e antes das cores) cada um vê só as próprias peças.
+  const esconder = montando || sala.status === 'escolhendo-cores' || sala.status === 'aguardando';
+  const tabuleiro = sala.jogo.tabuleiroPara(cor, esconder);
+  const pronto = sala.montagem || { w: false, b: false };
+  return {
+    tabuleiro: tabuleiro,
+    montagem: {
+      eu: !!(cor && pronto[cor]),
+      oponente: !!(cor && pronto[ladoOposto(cor)]),
+    },
+    // FEN só com as aparências visíveis (sem roque nem en passant).
+    fenAparente: fenAparente(tabuleiro, sala.jogo.vez(), sala.jogo.lanceCompleto),
+  };
+}
+
+/**
+ * Estado enviado a um jogador. No clássico é igual para os dois; no Impostor
+ * depende de `cor` (cor de quem vai receber; null = espectador / sem cor).
+ */
+function estadoPublico(sala, cor) {
+  const impostor = sala.variante.id === 'impostor';
+  const extraImpostor = impostor ? estadoImpostor(sala, cor || null) : null;
   const statusJogo = sala.resultado
     ? sala.resultado.tipo
     : (sala.jogo.status ? sala.jogo.status() : 'em_andamento');
@@ -189,8 +242,12 @@ function estadoPublico(sala) {
     codigo: sala.codigo,
     modo: sala.modo.id,
     rotuloModo: sala.modo.rotulo,
+    variante: sala.variante.id,
+    rotuloVariante: sala.variante.rotulo,
     statusSala: sala.status,
-    fen: sala.jogo.fen(),
+    // No Impostor o FEN real revelaria as funções: mandamos só as aparências.
+    fen: impostor ? extraImpostor.fenAparente : sala.jogo.fen(),
+    impostor: impostor ? { tabuleiro: extraImpostor.tabuleiro, montagem: extraImpostor.montagem } : null,
     vez: sala.jogo.vez(),
     historico: sala.jogo.historicoSan(),
     capturadas: sala.jogo.pecasCapturadas(),
@@ -220,9 +277,29 @@ function estadoPublico(sala) {
   };
 }
 
+/**
+ * Envia `evento` para cada jogador da sala, com o estado filtrado para a cor
+ * dele. `extra` são campos adicionais iguais para todos.
+ */
+function emitirSala(sala, evento, extra) {
+  for (const papel of ['anfitriao', 'convidado']) {
+    const j = sala.participantes[papel];
+    if (!j || !j.socketId) continue;
+    const cor = corDoPapel(sala, papel);
+    io.to(j.socketId).emit(evento, Object.assign({}, extra || {}, { estado: estadoPublico(sala, cor) }));
+  }
+}
+
+/** Como emitirSala, mas só para o outro jogador (não o `papel` informado). */
+function emitirOponente(sala, papel, evento, extra) {
+  const outro = papel === 'anfitriao' ? 'convidado' : 'anfitriao';
+  const j = sala.participantes[outro];
+  if (!j || !j.socketId) return;
+  io.to(j.socketId).emit(evento, Object.assign({}, extra || {}, { estado: estadoPublico(sala, corDoPapel(sala, outro)) }));
+}
+
 function emitirEstado(sala, extra) {
-  const estado = estadoPublico(sala);
-  io.to('sala:' + sala.codigo).emit('estado', Object.assign({ estado: estado }, extra || {}));
+  emitirSala(sala, 'estado', extra);
 }
 
 function jogadorPorToken(sala, token) {
@@ -267,15 +344,19 @@ function atualizarCorDosSockets(sala) {
 // Criação / entrada / reconexão
 // ---------------------------------------------------------------------------
 
-function criarSala(modoId, nome) {
+function criarSala(modoId, nome, varianteId) {
   const modo = MODOS[modoId];
   if (!modo) return null;
+  const variante = VARIANTES[varianteId] || VARIANTES.classico;
 
   const codigo = gerarCodigo();
   const token = gerarToken();
   const sala = {
     codigo: codigo,
     modo: modo,
+    variante: variante,
+    /** Impostor: quem já clicou em Pronto na montagem. */
+    montagem: { w: false, b: false },
     participantes: {
       anfitriao: {
         token: token,
@@ -289,7 +370,7 @@ function criarSala(modoId, nome) {
     jogadores: { w: null, b: null },
     corAnfitriao: null,
     sugestaoCorAnfitriao: 'w',
-    jogo: new Chess(),
+    jogo: variante.id === 'impostor' ? new JogoImpostor() : new Chess(),
     relogio: novoRelogio(modo),
     status: 'aguardando',
     resultado: null,
@@ -325,12 +406,24 @@ function sentar(sala, tokenExistente, nome) {
 }
 
 function iniciarPartidaAposCores(sala) {
-  sala.jogo = new Chess();
+  sala.jogo = novoJogo(sala);
   sala.relogio = novoRelogio(sala.modo);
-  sala.status = 'em_andamento';
   sala.resultado = null;
   sala.propostaEmpatePor = null;
   sala.revanche = { anfitriao: false, convidado: false };
+  sala.ultimoEvento = Date.now();
+  if (sala.variante.id === 'impostor') {
+    // Impostor: antes do relógio, cada um monta as funções (sem limite de tempo).
+    sala.status = 'montando';
+    sala.montagem = { w: false, b: false };
+    return;
+  }
+  comecarRelogioEPartida(sala);
+}
+
+/** Coloca a partida em andamento e liga o relógio das brancas. */
+function comecarRelogioEPartida(sala) {
+  sala.status = 'em_andamento';
   sala.ultimoEvento = Date.now();
   if (sala.modo.minutos != null) {
     sala.relogio.ativo = 'w';
@@ -360,7 +453,8 @@ function irParaEscolhaDeCores(sala, sugestao) {
   sala.resultado = null;
   sala.propostaEmpatePor = null;
   sala.revanche = { anfitriao: false, convidado: false };
-  sala.jogo = new Chess();
+  sala.jogo = novoJogo(sala);
+  sala.montagem = { w: false, b: false };
   sala.relogio = novoRelogio(sala.modo);
   sala.ultimoEvento = Date.now();
   atualizarCorDosSockets(sala);
@@ -399,10 +493,9 @@ function desconectarSocket(socket) {
   achou.jogador.socketId = null;
   achou.jogador.ultimoVisto = Date.now();
   sala.ultimoEvento = Date.now();
-  socket.to('sala:' + sala.codigo).emit('oponenteDesconectado', {
+  emitirOponente(sala, achou.papel, 'oponenteDesconectado', {
     cor: achou.cor,
     papel: achou.papel,
-    estado: estadoPublico(sala),
   });
 }
 
@@ -415,8 +508,10 @@ function aplicarLance(sala, cor, entrada) {
   if (verificarFlag(sala)) return { flagged: true };
   if (sala.jogo.vez() !== cor) return { erro: 'Não é a sua vez.' };
 
-  const from = typeof entrada.from === 'number' ? entrada.from : entrada.from;
-  const to = typeof entrada.to === 'number' ? entrada.to : entrada.to;
+  // Aceita índice (12) ou notação ("e2"); o motor Impostor trabalha só com índices.
+  const paraIndice = (v) => (typeof v === 'string' ? (v.charCodeAt(1) - 49) * 8 + (v.charCodeAt(0) - 97) : v);
+  const from = paraIndice(entrada.from);
+  const to = paraIndice(entrada.to);
   if (from == null || to == null) return { erro: 'Lance inválido.' };
 
   const feito = sala.jogo.mover({
@@ -424,7 +519,13 @@ function aplicarLance(sala, cor, entrada) {
     to: to,
     promotion: entrada.promotion || null,
   });
-  if (!feito) return { erro: 'Lance ilegal.' };
+  if (!feito) {
+    // Impostor: o jogador não vê as funções do oponente, então explicamos o motivo.
+    if (sala.variante.id === 'impostor' && sala.jogo.deixariaReiEmXeque(from, to)) {
+      return { erro: 'Lance ilegal: seu rei ficaria em xeque.' };
+    }
+    return { erro: 'Lance ilegal.' };
+  }
 
   sala.propostaEmpatePor = null;
   sala.revanche = { anfitriao: false, convidado: false };
@@ -464,14 +565,18 @@ io.on('connection', (socket) => {
       return socket.emit('erro', { mensagem: 'Modo inválido.' });
     }
     try {
-      const criado = criarSala(modoId, dados && dados.nome);
+      const varianteId = dados && dados.variante;
+      if (varianteId != null && !VARIANTES[varianteId]) {
+        return socket.emit('erro', { mensagem: 'Variante inválida.' });
+      }
+      const criado = criarSala(modoId, dados && dados.nome, varianteId);
       ligarSocket(criado.sala, criado.papel, socket);
       socket.emit('entrouSala', {
         codigo: criado.sala.codigo,
         cor: null,
         papel: criado.papel,
         token: criado.token,
-        estado: estadoPublico(criado.sala),
+        estado: estadoPublico(criado.sala, null),
         criador: true,
       });
     } catch (e) {
@@ -501,20 +606,18 @@ io.on('connection', (socket) => {
       cor: corDoPapel(sala, lugar.papel),
       papel: lugar.papel,
       token: lugar.token,
-      estado: estadoPublico(sala),
+      estado: estadoPublico(sala, corDoPapel(sala, lugar.papel)),
       criador: lugar.papel === 'anfitriao',
       reconectou: !!lugar.reconectou,
     });
     if (acabouDeCompletar || sala.status === 'escolhendo-cores') {
-      io.to('sala:' + sala.codigo).emit('escolherCores', {
-        estado: estadoPublico(sala),
+      emitirSala(sala, 'escolherCores', {
         sugestao: sala.sugestaoCorAnfitriao || 'w',
       });
     } else {
-      socket.to('sala:' + sala.codigo).emit('oponenteReconectou', {
+      emitirOponente(sala, lugar.papel, 'oponenteReconectou', {
         cor: corDoPapel(sala, lugar.papel),
         papel: lugar.papel,
-        estado: estadoPublico(sala),
       });
     }
   });
@@ -539,20 +642,19 @@ io.on('connection', (socket) => {
       cor: achou.cor,
       papel: achou.papel,
       token: achou.jogador.token,
-      estado: estadoPublico(sala),
+      estado: estadoPublico(sala, achou.cor),
       criador: achou.papel === 'anfitriao',
       reconectou: true,
     });
     if (sala.status === 'escolhendo-cores') {
       socket.emit('escolherCores', {
-        estado: estadoPublico(sala),
+        estado: estadoPublico(sala, achou.cor),
         sugestao: sala.sugestaoCorAnfitriao || 'w',
       });
     }
-    socket.to('sala:' + sala.codigo).emit('oponenteReconectou', {
+    emitirOponente(sala, achou.papel, 'oponenteReconectou', {
       cor: achou.cor,
       papel: achou.papel,
-      estado: estadoPublico(sala),
     });
   });
 
@@ -586,16 +688,75 @@ io.on('connection', (socket) => {
     const atrib = atribuirCores(sala, escolha);
     if (!atrib) return socket.emit('erro', { mensagem: 'Não foi possível atribuir as cores.' });
     iniciarPartidaAposCores(sala);
-    const estado = estadoPublico(sala);
     for (const papel of ['anfitriao', 'convidado']) {
       const j = sala.participantes[papel];
       if (!j || !j.socketId) continue;
+      const cor = corDoPapel(sala, papel);
       io.to(j.socketId).emit('coresDefinidas', {
-        cor: corDoPapel(sala, papel),
+        cor: cor,
         aleatorio: atrib.aleatorio,
         papel: papel,
-        estado: estado,
+        estado: estadoPublico(sala, cor),
       });
+    }
+  });
+
+  // -------------------------------------------------------------------------
+  // Montagem do modo Impostor (só no status 'montando')
+  // -------------------------------------------------------------------------
+
+  /** Valida o pedido de montagem e devolve a sala, ou null (já avisando o erro). */
+  function salaEmMontagem() {
+    const sala = salas.get(socket.data.codigo);
+    const cor = socket.data.cor;
+    if (!sala || !cor) { socket.emit('erro', { mensagem: 'Você não está em uma sala.' }); return null; }
+    if (sala.variante.id !== 'impostor' || sala.status !== 'montando') {
+      socket.emit('erro', { mensagem: 'Não é o momento de montar as peças.' });
+      return null;
+    }
+    return sala;
+  }
+
+  socket.on('trocarFuncoes', (dados) => {
+    if (!dentroDaTaxa(socket, 40, 5000)) return;
+    const sala = salaEmMontagem();
+    if (!sala) return;
+    const cor = socket.data.cor;
+    if (sala.montagem[cor]) return socket.emit('erro', { mensagem: 'Clique em “Editar” para mudar a montagem.' });
+    const a = dados && dados.a;
+    const b = dados && dados.b;
+    const casaOk = (v) => Number.isInteger(v) && v >= 0 && v <= 63;
+    if (!casaOk(a) || !casaOk(b) || !sala.jogo.trocarFuncoes(cor, a, b)) {
+      return socket.emit('erro', { mensagem: 'Troca inválida.' });
+    }
+    sala.ultimoEvento = Date.now();
+    // Só quem trocou precisa do novo tabuleiro; o oponente não vê nada mudar.
+    socket.emit('estado', { estado: estadoPublico(sala, cor) });
+  });
+
+  socket.on('resetarFuncoes', () => {
+    if (!dentroDaTaxa(socket, 10, 5000)) return;
+    const sala = salaEmMontagem();
+    if (!sala) return;
+    const cor = socket.data.cor;
+    if (sala.montagem[cor]) return;
+    sala.jogo.resetarFuncoes(cor);
+    sala.ultimoEvento = Date.now();
+    socket.emit('estado', { estado: estadoPublico(sala, cor) });
+  });
+
+  socket.on('prontoMontagem', (dados) => {
+    if (!dentroDaTaxa(socket, 10, 5000)) return;
+    const sala = salaEmMontagem();
+    if (!sala) return;
+    const cor = socket.data.cor;
+    sala.montagem[cor] = !(dados && dados.pronto === false);
+    sala.ultimoEvento = Date.now();
+    if (sala.montagem.w && sala.montagem.b) {
+      comecarRelogioEPartida(sala);
+      emitirSala(sala, 'partidaIniciada');
+    } else {
+      emitirEstado(sala);
     }
   });
 
@@ -623,16 +784,14 @@ io.on('connection', (socket) => {
 
     const resultado = aplicarLance(sala, cor, entrada);
     if (resultado.flagged) {
-      io.to('sala:' + sala.codigo).emit('fimDeJogo', { estado: estadoPublico(sala) });
+      emitirSala(sala, 'fimDeJogo');
       return;
     }
     if (resultado.erro) {
       return socket.emit('lanceIlegal', { motivo: resultado.erro });
     }
-    io.to('sala:' + sala.codigo).emit('lanceFeito', {
-      lance: resultado.lance,
-      estado: estadoPublico(sala),
-    });
+    // No Impostor o lance já vem do motor sem segredos (só aparências e revelações).
+    emitirSala(sala, 'lanceFeito', { lance: resultado.lance });
   });
 
   socket.on('desistir', () => {
@@ -643,11 +802,11 @@ io.on('connection', (socket) => {
     if (sala.status !== 'em_andamento') return socket.emit('erro', { mensagem: 'A partida não está em andamento.' });
     verificarFlag(sala);
     if (sala.status !== 'em_andamento') {
-      io.to('sala:' + sala.codigo).emit('fimDeJogo', { estado: estadoPublico(sala) });
+      emitirSala(sala, 'fimDeJogo');
       return;
     }
     encerrar(sala, { tipo: 'desistencia', vencedor: ladoOposto(cor), motivo: 'desistencia' });
-    io.to('sala:' + sala.codigo).emit('fimDeJogo', { estado: estadoPublico(sala) });
+    emitirSala(sala, 'fimDeJogo');
   });
 
   socket.on('proporEmpate', () => {
@@ -656,19 +815,19 @@ io.on('connection', (socket) => {
     const cor = socket.data.cor;
     if (!sala || !cor || sala.status !== 'em_andamento') return;
     if (verificarFlag(sala)) {
-      io.to('sala:' + sala.codigo).emit('fimDeJogo', { estado: estadoPublico(sala) });
+      emitirSala(sala, 'fimDeJogo');
       return;
     }
     if (sala.propostaEmpatePor === cor) return;
     if (sala.propostaEmpatePor === ladoOposto(cor)) {
       // O oponente já havia proposto: isto conta como aceite.
       encerrar(sala, { tipo: 'empate-acordo', vencedor: null, motivo: 'empate-acordo' });
-      io.to('sala:' + sala.codigo).emit('fimDeJogo', { estado: estadoPublico(sala) });
+      emitirSala(sala, 'fimDeJogo');
       return;
     }
     sala.propostaEmpatePor = cor;
     sala.ultimoEvento = Date.now();
-    io.to('sala:' + sala.codigo).emit('propostaEmpate', { de: cor, estado: estadoPublico(sala) });
+    emitirSala(sala, 'propostaEmpate', { de: cor });
   });
 
   socket.on('responderEmpate', (dados) => {
@@ -680,11 +839,11 @@ io.on('connection', (socket) => {
     const aceitar = !!(dados && dados.aceitar);
     if (aceitar) {
       encerrar(sala, { tipo: 'empate-acordo', vencedor: null, motivo: 'empate-acordo' });
-      io.to('sala:' + sala.codigo).emit('fimDeJogo', { estado: estadoPublico(sala) });
+      emitirSala(sala, 'fimDeJogo');
     } else {
       sala.propostaEmpatePor = null;
       sala.ultimoEvento = Date.now();
-      io.to('sala:' + sala.codigo).emit('empateRecusado', { por: cor, estado: estadoPublico(sala) });
+      emitirSala(sala, 'empateRecusado', { por: cor });
     }
   });
 
@@ -699,8 +858,7 @@ io.on('connection', (socket) => {
       // Nova escolha de cores; a sugestão padrão é inverter a partida anterior.
       const previa = sala.corAnfitriao || 'w';
       irParaEscolhaDeCores(sala, ladoOposto(previa));
-      io.to('sala:' + sala.codigo).emit('escolherCores', {
-        estado: estadoPublico(sala),
+      emitirSala(sala, 'escolherCores', {
         sugestao: sala.sugestaoCorAnfitriao,
         revanche: true,
       });
@@ -729,7 +887,7 @@ setInterval(() => {
   for (const sala of salas.values()) {
     if (sala.status !== 'em_andamento' || sala.modo.minutos == null) continue;
     if (verificarFlag(sala)) {
-      io.to('sala:' + sala.codigo).emit('fimDeJogo', { estado: estadoPublico(sala) });
+      emitirSala(sala, 'fimDeJogo');
     } else {
       io.to('sala:' + sala.codigo).emit('relogio', { relogio: relogioPublico(sala) });
     }

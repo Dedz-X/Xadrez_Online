@@ -4,8 +4,8 @@
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
   <meta name="theme-color" content="#12141a">
-  <meta name="description" content="Xadrez local e online para dois jogadores.">
-  <title>Xadrez</title>
+  <meta name="description" content="Xadrez Alternativo: xadrez clássico e o modo Impostor, local ou online, para dois jogadores.">
+  <title>Xadrez Alternativo</title>
   <script>
     (function () {
       try {
@@ -18,52 +18,66 @@
     })();
   </script>
   <link rel="stylesheet" href="style.css">
-  <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' rx='6' fill='%2312141a'/%3E%3Ctext x='16' y='24' text-anchor='middle' font-size='22'%3E%E2%99%9A%3C/text%3E%3C/svg%3E">
+  <link rel="icon" type="image/svg+xml" href="logo.svg">
+  <link rel="apple-touch-icon" href="logo.svg">
 </head>
 <body>
   <button type="button" id="btn-config" class="botao-config" title="Configurações" aria-label="Abrir configurações">⚙️</button>
+
+  <!-- ======================== TELA DE ABERTURA ======================== -->
+  <!-- Primeira tela: logo, nome do site e "Jogar" (leva ao nome → menu). -->
+  <div id="tela-splash" class="tela tela-splash">
+    <div class="splash-conteudo">
+      <img src="logo.svg" class="splash-logo" alt="" width="168" height="168">
+      <h1 class="splash-titulo">Xadrez <span>Alternativo</span></h1>
+      <p class="splash-texto">Xadrez clássico e o modo <strong>Impostor</strong>, em que as peças escondem como andam. Online com amigos ou no mesmo computador.</p>
+      <button type="button" id="btn-splash-jogar" class="botao botao-principal botao-grande">Jogar</button>
+    </div>
+  </div>
 
   <!-- ======================== TELA DO NOME ======================== -->
   <div id="tela-nome" class="tela tela-inicio tela-nome" hidden>
     <header class="cabecalho cabecalho-inicio">
       <div class="logo">
-        <span class="logo-peca" aria-hidden="true">♞</span>
+        <img src="logo.svg" class="logo-img" alt="" width="44" height="44">
         <div>
-          <h1>Xadrez</h1>
+          <h1>Xadrez Alternativo</h1>
           <p class="subtitulo">Como você quer aparecer nas partidas</p>
         </div>
       </div>
     </header>
-    <form id="form-nome" class="cartao cartao-nome" autocomplete="on">
+    <form id="form-nome" class="cartao cartao-nome cartao-escolha" autocomplete="on">
+      <span class="icone-escolha" aria-hidden="true">👤</span>
       <h2>Seu nome</h2>
-      <p>Esse nome aparece para o oponente, nos relógios e no resultado da partida.</p>
-      <label for="input-nome">Seu nome</label>
+      <p>Ele aparece para o oponente, nos relógios e no resultado da partida.</p>
+      <label for="input-nome" class="rotulo-campo">Seu nome</label>
       <input id="input-nome" name="nome" type="text" maxlength="20" minlength="1" required spellcheck="false" autocomplete="nickname" class="campo-nome" placeholder="Ex.: André">
-      <p class="ajuda-config">De 1 a 20 caracteres. Você pode alterar depois em ⚙️ Configurações.</p>
-      <div class="acoes" style="margin-top: 1rem;">
-        <button type="submit" class="botao botao-principal">Continuar</button>
+      <p class="ajuda-config">De 1 a 20 caracteres. Dá para mudar depois em ⚙️ Configurações.</p>
+      <div class="acoes">
+        <button type="submit" class="botao botao-principal botao-grande">Continuar</button>
       </div>
     </form>
   </div>
 
-  <!-- ======================== TELA INICIAL ======================== -->
-  <div id="tela-inicio" class="tela tela-inicio">
+  <!-- ======================== TELA INICIAL (MENU) ======================== -->
+  <div id="tela-inicio" class="tela tela-inicio" hidden>
     <header class="cabecalho cabecalho-inicio">
       <div class="logo">
-        <span class="logo-peca" aria-hidden="true">♞</span>
+        <img src="logo.svg" class="logo-img" alt="" width="44" height="44">
         <div>
-          <h1>Xadrez</h1>
-          <p class="subtitulo">Jogue localmente ou online, no mesmo navegador</p>
+          <h1>Xadrez Alternativo</h1>
+          <p class="subtitulo">Escolha como quer jogar</p>
         </div>
       </div>
     </header>
 
     <div class="grade-inicio">
-      <section class="cartao cartao-inicio">
+      <section class="cartao cartao-inicio cartao-escolha">
+        <span class="icone-escolha" aria-hidden="true">🌐</span>
         <h2>Jogar online</h2>
-        <p>Crie uma sala e convide alguém com um código ou um link.</p>
+        <p>Crie uma sala (Clássico ou Impostor) e convide alguém com um código ou link.</p>
         <div class="acoes">
-          <button type="button" id="btn-criar-sala" class="botao botao-principal">Criar sala</button>
+          <button type="button" id="btn-criar-sala" class="botao botao-principal botao-grande">Criar sala</button>
         </div>
         <form id="form-entrar" class="form-entrar" autocomplete="off">
           <label for="input-codigo">Entrar com código</label>
@@ -74,11 +88,12 @@
         </form>
       </section>
 
-      <section class="cartao cartao-inicio">
+      <section class="cartao cartao-inicio cartao-escolha">
+        <span class="icone-escolha" aria-hidden="true">🖥️</span>
         <h2>Jogar local</h2>
-        <p>Dois jogadores no mesmo computador, sem relógio de rede.</p>
+        <p>Dois jogadores no mesmo computador ou celular, revezando a vez.</p>
         <div class="acoes">
-          <button type="button" id="btn-jogar-local" class="botao botao-principal">Jogar neste computador</button>
+          <button type="button" id="btn-jogar-local" class="botao botao-principal botao-grande">Jogar neste computador</button>
         </div>
       </section>
     </div>
@@ -89,9 +104,9 @@
     <div class="app">
       <header class="cabecalho">
         <div class="logo">
-          <span class="logo-peca" aria-hidden="true">♞</span>
+          <img src="logo.svg" class="logo-img" alt="" width="44" height="44">
           <div>
-            <h1>Xadrez</h1>
+            <h1>Xadrez Alternativo</h1>
             <p id="subtitulo-jogo" class="subtitulo">Dois jogadores no mesmo computador</p>
           </div>
         </div>
@@ -124,14 +139,24 @@
 
       <div id="overlay-cores" class="overlay-espera overlay-cores" hidden>
         <div class="cartao cartao-espera cartao-cores" role="dialog" aria-modal="true" aria-labelledby="titulo-cores">
+          <span class="icone-escolha" aria-hidden="true">♟️</span>
           <h2 id="titulo-cores">Quem joga de brancas?</h2>
           <p id="nomes-cores" class="nome-sala"></p>
           <div id="menu-cores-anfitriao">
             <p class="modal-ajuda">O anfitrião escolhe as cores. A partida só começa depois desta escolha.</p>
             <div class="grade-escolha-cores">
-              <button type="button" class="botao botao-cor" data-escolha="w">Eu (criador) de brancas</button>
-              <button type="button" class="botao botao-cor" data-escolha="b">Eu (criador) de pretas</button>
-              <button type="button" class="botao botao-cor" data-escolha="aleatoria">Aleatório</button>
+              <button type="button" class="botao botao-cor" data-escolha="w">
+                <span class="cor-icone cor-icone-branca" aria-hidden="true">♚</span>
+                <span class="cor-texto"><strong>Eu de brancas</strong><small>Você começa jogando</small></span>
+              </button>
+              <button type="button" class="botao botao-cor" data-escolha="b">
+                <span class="cor-icone cor-icone-preta" aria-hidden="true">♚</span>
+                <span class="cor-texto"><strong>Eu de pretas</strong><small>O oponente começa</small></span>
+              </button>
+              <button type="button" class="botao botao-cor" data-escolha="aleatoria">
+                <span class="cor-icone" aria-hidden="true">🎲</span>
+                <span class="cor-texto"><strong>Aleatório</strong><small>Sorteio na hora</small></span>
+              </button>
             </div>
           </div>
           <p id="espera-cores-convidado" class="texto-espera-cores" hidden>Aguardando o anfitrião escolher as cores...</p>
@@ -141,6 +166,19 @@
         </div>
       </div>
 
+      <!-- Montagem do modo Impostor: aparece depois das cores, até os dois clicarem em Pronto -->
+      <div id="barra-montagem" class="cartao barra-montagem" hidden>
+        <div class="montagem-texto">
+          <h2>🎭 Monte suas peças</h2>
+          <p class="ajuda-curta">🎭 Toque em 2 peças suas para trocar</p>
+          <p id="ajuda-montagem" class="modal-ajuda">Toque em duas peças suas para trocar a função delas. O selo mostra como a peça anda de verdade; o oponente só vê a aparência.</p>
+          <p id="status-montagem" class="status-montagem" role="status">Oponente montando…</p>
+        </div>
+        <div class="montagem-acoes">
+          <button type="button" id="btn-montagem-resetar" class="botao">Resetar</button>
+          <button type="button" id="btn-montagem-pronto" class="botao botao-principal">Pronto</button>
+        </div>
+      </div>
       <main class="principal">
         <section class="area-tabuleiro" aria-label="Tabuleiro de xadrez">
           <div id="barra-lado-topo" class="barra-lado" data-pos="topo">
@@ -173,6 +211,10 @@
             <p id="status-jogo" class="status-jogo" role="status"></p>
             <p id="modo-atual" class="modo-atual">Modo: Livre (sem tempo)</p>
             <p id="sua-cor" class="modo-atual" hidden></p>
+            <p id="legenda-impostor" class="legenda-impostor" hidden>
+              <span class="legenda-item"><span class="amostra-selo" aria-hidden="true">♝</span> função real (só você vê nas suas)</span>
+              <span class="legenda-item"><span class="amostra-revelada" aria-hidden="true"></span> peça revelada (todos veem)</span>
+            </p>
           </div>
 
           <div id="cartao-relogios" class="cartao relogios-cartao" hidden>
@@ -271,15 +313,59 @@
 
   <!-- Criar sala online -->
   <div id="modal-criar" class="modal" hidden>
-    <div class="modal-caixa modal-modos" role="dialog" aria-modal="true" aria-labelledby="titulo-criar">
+    <div class="modal-caixa modal-modos modal-criar-caixa" role="dialog" aria-modal="true" aria-labelledby="titulo-criar">
       <h2 id="titulo-criar">Criar sala</h2>
-      <p class="modal-ajuda">Escolha o modo da partida. As cores são definidas depois que o oponente entrar, pelo anfitrião.</p>
+      <p class="modal-ajuda">Escolha a variante e o tempo. As cores são definidas pelo anfitrião depois que o oponente entrar.</p>
       <form id="form-criar" class="form-criar">
-        <fieldset class="grupo-modos">
-          <legend>Modo</legend>
-          <label class="opcao-radio"><input type="radio" name="modo" value="livre" checked> Livre (sem tempo)</label>
-          <label class="opcao-radio"><input type="radio" name="modo" value="10+0"> Rápido 10 min</label>
-          <label class="opcao-radio"><input type="radio" name="modo" value="3+0"> Blitz 3 min</label>
+        <fieldset class="grupo-cartoes">
+          <legend>Variante</legend>
+          <div class="grade-cartoes grade-cartoes-2">
+            <label class="cartao-opcao">
+              <input type="radio" name="variante" value="classico" checked>
+              <span class="cartao-opcao-corpo">
+                <span class="cartao-opcao-icone" aria-hidden="true">♞</span>
+                <span class="cartao-opcao-nome">Clássico</span>
+                <span class="cartao-opcao-desc">As regras de sempre do xadrez.</span>
+              </span>
+            </label>
+            <label class="cartao-opcao cartao-opcao-impostor">
+              <input type="radio" name="variante" value="impostor">
+              <span class="cartao-opcao-corpo">
+                <span class="cartao-opcao-icone" aria-hidden="true">🎭</span>
+                <span class="cartao-opcao-nome">Impostor</span>
+                <span class="cartao-opcao-desc">Troque em segredo como cada peça anda.</span>
+              </span>
+            </label>
+          </div>
+        </fieldset>
+        <fieldset class="grupo-cartoes">
+          <legend>Tempo</legend>
+          <div class="grade-cartoes grade-cartoes-3">
+            <label class="cartao-opcao">
+              <input type="radio" name="modo" value="livre" checked>
+              <span class="cartao-opcao-corpo">
+                <span class="cartao-opcao-icone" aria-hidden="true">♾️</span>
+                <span class="cartao-opcao-nome">Livre</span>
+                <span class="cartao-opcao-desc">Sem relógio</span>
+              </span>
+            </label>
+            <label class="cartao-opcao">
+              <input type="radio" name="modo" value="10+0">
+              <span class="cartao-opcao-corpo">
+                <span class="cartao-opcao-icone" aria-hidden="true">⏱️</span>
+                <span class="cartao-opcao-nome">Rápido</span>
+                <span class="cartao-opcao-desc">10 min cada</span>
+              </span>
+            </label>
+            <label class="cartao-opcao">
+              <input type="radio" name="modo" value="3+0">
+              <span class="cartao-opcao-corpo">
+                <span class="cartao-opcao-icone" aria-hidden="true">⚡</span>
+                <span class="cartao-opcao-nome">Blitz</span>
+                <span class="cartao-opcao-desc">3 min cada</span>
+              </span>
+            </label>
+          </div>
         </fieldset>
         <div class="acoes-modal">
           <button type="button" id="btn-criar-cancelar" class="botao">Cancelar</button>
@@ -293,59 +379,59 @@
   <div id="modal-config" class="modal" hidden>
     <div class="modal-caixa modal-config" role="dialog" aria-modal="true" aria-labelledby="titulo-config">
       <h2 id="titulo-config">⚙️ Configurações</h2>
+      <div class="config-corpo">
+        <section class="grupo-config">
+          <h3>Nome</h3>
+          <label class="rotulo-slider" for="cfg-nome">Seu nome</label>
+          <input id="cfg-nome" type="text" maxlength="20" spellcheck="false" autocomplete="nickname" class="campo-nome" placeholder="Ex.: André">
+          <label class="rotulo-slider" for="cfg-nome-pretas">Nome das pretas (partida local)</label>
+          <input id="cfg-nome-pretas" type="text" maxlength="20" spellcheck="false" class="campo-nome" placeholder="Jogador 2">
+          <p class="ajuda-config">Nas partidas locais, as brancas usam o seu nome e as pretas usam o nome acima (o padrão é “Jogador 2”).</p>
+        </section>
 
-      <section class="grupo-config">
-        <h3>Nome</h3>
-        <label class="rotulo-slider" for="cfg-nome">Seu nome</label>
-        <input id="cfg-nome" type="text" maxlength="20" spellcheck="false" autocomplete="nickname" class="campo-nome" placeholder="Ex.: André">
-        <label class="rotulo-slider" for="cfg-nome-pretas">Nome das pretas (partida local)</label>
-        <input id="cfg-nome-pretas" type="text" maxlength="20" spellcheck="false" class="campo-nome" placeholder="Jogador 2">
-        <p class="ajuda-config">Nas partidas locais, as brancas usam o seu nome e as pretas usam o nome acima (o padrão é “Jogador 2”).</p>
-      </section>
+        <section class="grupo-config">
+          <h3>Som</h3>
+          <div class="linha-som">
+            <button type="button" id="cfg-som" class="botao-toggle-som" role="switch" aria-checked="true" aria-labelledby="cfg-som-rotulo">
+              <span class="toggle-trilho" aria-hidden="true"><span class="toggle-pino"></span></span>
+              <span id="cfg-som-rotulo">Som: ligado</span>
+            </button>
+            <label class="rotulo-slider rotulo-volume" for="cfg-volume">Volume <span id="cfg-volume-valor">70%</span></label>
+          </div>
+          <input type="range" id="cfg-volume" min="0" max="100" value="70" class="slider" aria-label="Volume">
+          <p class="rotulo-slider">Pacote de som</p>
+          <div class="grade-opcoes" role="radiogroup" aria-label="Pacote de som">
+            <button type="button" class="botao-opcao" data-cfg="pacoteSom" data-valor="moderno">Moderno</button>
+            <button type="button" class="botao-opcao" data-cfg="pacoteSom" data-valor="classico">Clássico</button>
+          </div>
+          <p class="ajuda-config">O pacote clássico reproduz o toque da peça de madeira no tabuleiro (gerado no próprio navegador, sem arquivos de áudio).</p>
+        </section>
 
-      <section class="grupo-config">
-        <h3>Som</h3>
-        <div class="linha-som">
-          <button type="button" id="cfg-som" class="botao-toggle-som" role="switch" aria-checked="true" aria-labelledby="cfg-som-rotulo">
-            <span class="toggle-trilho" aria-hidden="true"><span class="toggle-pino"></span></span>
-            <span id="cfg-som-rotulo">Som: ligado</span>
-          </button>
-          <label class="rotulo-slider rotulo-volume" for="cfg-volume">Volume <span id="cfg-volume-valor">70%</span></label>
-        </div>
-        <input type="range" id="cfg-volume" min="0" max="100" value="70" class="slider" aria-label="Volume">
-        <p class="rotulo-slider">Pacote de som</p>
-        <div class="grade-opcoes" role="radiogroup" aria-label="Pacote de som">
-          <button type="button" class="botao-opcao" data-cfg="pacoteSom" data-valor="moderno">Moderno</button>
-          <button type="button" class="botao-opcao" data-cfg="pacoteSom" data-valor="classico">Clássico</button>
-        </div>
-        <p class="ajuda-config">O pacote clássico reproduz o toque da peça de madeira no tabuleiro (gerado no próprio navegador, sem arquivos de áudio).</p>
-      </section>
+        <section class="grupo-config">
+          <h3>Tema visual</h3>
+          <div class="grade-opcoes" role="radiogroup" aria-label="Tema">
+            <button type="button" class="botao-opcao" data-cfg="tema" data-valor="madeira"><span class="swatch swatch-madeira"></span> Madeira</button>
+            <button type="button" class="botao-opcao" data-cfg="tema" data-valor="verde"><span class="swatch swatch-verde"></span> Clássico</button>
+            <button type="button" class="botao-opcao" data-cfg="tema" data-valor="oceano"><span class="swatch swatch-oceano"></span> Oceano</button>
+          </div>
+        </section>
 
-      <section class="grupo-config">
-        <h3>Tema visual</h3>
-        <div class="grade-opcoes" role="radiogroup" aria-label="Tema">
-          <button type="button" class="botao-opcao" data-cfg="tema" data-valor="madeira"><span class="swatch swatch-madeira"></span> Madeira</button>
-          <button type="button" class="botao-opcao" data-cfg="tema" data-valor="verde"><span class="swatch swatch-verde"></span> Clássico</button>
-          <button type="button" class="botao-opcao" data-cfg="tema" data-valor="oceano"><span class="swatch swatch-oceano"></span> Oceano</button>
-        </div>
-      </section>
+        <section class="grupo-config">
+          <h3>Estilo das peças</h3>
+          <div class="grade-opcoes" role="radiogroup" aria-label="Estilo das peças">
+            <button type="button" class="botao-opcao" data-cfg="estiloPecas" data-valor="unicode">Unicode</button>
+            <button type="button" class="botao-opcao" data-cfg="estiloPecas" data-valor="staunton">Staunton</button>
+            <button type="button" class="botao-opcao" data-cfg="estiloPecas" data-valor="pixelado">Pixelado</button>
+          </div>
+          <div id="amostra-pecas" class="amostra-pecas" aria-hidden="true"></div>
+        </section>
 
-      <section class="grupo-config">
-        <h3>Estilo das peças</h3>
-        <div class="grade-opcoes" role="radiogroup" aria-label="Estilo das peças">
-          <button type="button" class="botao-opcao" data-cfg="estiloPecas" data-valor="unicode">Unicode</button>
-          <button type="button" class="botao-opcao" data-cfg="estiloPecas" data-valor="staunton">Staunton</button>
-          <button type="button" class="botao-opcao" data-cfg="estiloPecas" data-valor="pixelado">Pixelado</button>
-        </div>
-        <div id="amostra-pecas" class="amostra-pecas" aria-hidden="true"></div>
-      </section>
-
-      <section class="grupo-config">
-        <h3>Tabuleiro</h3>
-        <label class="opcao-check"><input type="checkbox" id="cfg-dicas" checked> Mostrar dicas de lances legais</label>
-        <label class="opcao-check"><input type="checkbox" id="cfg-coordenadas" checked> Mostrar coordenadas (a–h, 1–8)</label>
-      </section>
-
+        <section class="grupo-config">
+          <h3>Tabuleiro</h3>
+          <label class="opcao-check"><input type="checkbox" id="cfg-dicas" checked> Mostrar dicas de lances legais</label>
+          <label class="opcao-check"><input type="checkbox" id="cfg-coordenadas" checked> Mostrar coordenadas (a–h, 1–8)</label>
+        </section>
+      </div>
       <div class="acoes-modal acoes-modos">
         <button type="button" id="btn-config-fechar" class="botao botao-principal">Fechar</button>
       </div>
@@ -377,9 +463,12 @@
   </div>
 
   <div id="toast" class="toast" hidden role="status"></div>
+  <!-- Versão do site (lida do package.json pelo servidor em /versao). Fica atrás do conteúdo. -->
+  <div id="versao-app" class="versao-app" aria-hidden="true"></div>
 
   <script src="/socket.io/socket.io.js"></script>
   <script src="chess-engine.js"></script>
+  <script src="impostor-engine.js"></script>
   <script src="pecas.js"></script>
   <script src="sons.js"></script>
   <script src="script.js"></script>

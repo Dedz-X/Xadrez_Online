@@ -1,11 +1,12 @@
 {
   "name": "xadrez-online",
-  "version": "1.1.0",
-  "description": "Xadrez local e online para dois jogadores (Node.js + Express + Socket.IO)",
+  "version": "1.2.0",
+  "description": "Xadrez Alternativo: xadrez clássico e modo Impostor, local e online para dois jogadores (Node.js + Express + Socket.IO)",
   "main": "server.js",
   "scripts": {
     "start": "node server.js",
-    "test": "node test-perft.js"
+    "test": "node test-perft.js && node test-impostor.js",
+    "test:e2e": "node test-e2e-impostor.js"
   },
   "engines": {
     "node": ">=18"

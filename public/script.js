@@ -9,6 +9,11 @@
  * Relógio local: desfazer restaura o tempo de antes do lance; flag encerra o jogo.
  * Relógio online: o servidor envia os tempos; aqui só exibimos.
  * Desfazer fica desativado nas partidas online.
+ *
+ * Modo Impostor (só online): o servidor manda em estado.impostor.tabuleiro a
+ * visão filtrada deste jogador (as próprias peças com a função real, as do
+ * oponente só com a aparência). Desenhamos a aparência e, por cima, um selo
+ * com a função real (nas nossas peças disfarçadas e nas peças reveladas).
  */
 'use strict';
 
@@ -44,7 +49,10 @@ const TEXTOS_STATUS = {
   'empate-50': 'Empate pela regra dos 50 lances',
   'empate-acordo': 'Empate por acordo',
   'empate-tempo': 'Empate — o adversário não pode dar mate',
+  montando: 'Montando as peças (modo Impostor)…',
 };
+
+const NOMES_FUNCAO = { k: 'Rei', q: 'Dama', r: 'Torre', b: 'Bispo', n: 'Cavalo', p: 'Peão' };
 
 // ------------------------------------------------------------------------
 // Configurações (valem para o modo local e o online)
@@ -138,8 +146,11 @@ const online = {
 };
 let socket = null;
 let relogioOnline = null;
+/** Impostor: primeira peça escolhida para a troca de funções na montagem. */
+let selecaoMontagem = null;
 
 // DOM
+const elTelaSplash = document.getElementById('tela-splash');
 const elTelaNome = document.getElementById('tela-nome');
 const elTelaInicio = document.getElementById('tela-inicio');
 const elTelaJogo = document.getElementById('tela-jogo');
@@ -199,6 +210,44 @@ function pontoDaCasa(sq) {
 }
 function estiloPecas() { return config.estiloPecas || 'unicode'; }
 
+// ------------------------------------------------------------------------
+// Modo Impostor (auxiliares)
+// ------------------------------------------------------------------------
+
+/** A partida online atual é do modo Impostor? */
+function ehImpostor() {
+  return !!(online.ativo && online.estado && online.estado.variante === 'impostor' && online.estado.impostor);
+}
+/** Estamos na fase de montagem (troca de funções antes do relógio)? */
+function emMontagem() {
+  return ehImpostor() && online.estado.statusSala === 'montando';
+}
+/** Visão filtrada do tabuleiro enviada pelo servidor (ou null no clássico). */
+function visaoImpostor() {
+  return ehImpostor() ? online.estado.impostor.tabuleiro : null;
+}
+/** Letra da peça como ela APARECE (maiúscula = branca), no formato do motor. */
+function letraDaVisao(v) {
+  if (!v) return null;
+  return v.c === 'w' ? v.a.toUpperCase() : v.a;
+}
+/** Tabuleiro de letras que desenhamos: aparências no Impostor, motor no clássico. */
+function tabuleiroVisivel() {
+  const visao = visaoImpostor();
+  return visao ? visao.map(letraDaVisao) : jogo.obterTabuleiro();
+}
+/**
+ * Lances (dicas) da peça em `sq`. No Impostor usamos a função real das nossas
+ * peças; quem decide se o lance é legal é sempre o servidor.
+ */
+function lancesDaCasa(sq) {
+  if (ehImpostor()) {
+    if (emMontagem()) return [];
+    return Impostor.lancesDica(visaoImpostor(), sq, ultimoLanceAtual());
+  }
+  return jogo.lances(sq);
+}
+
 function partidaAcabou() {
   if (online.ativo && online.estado) {
     return online.estado.statusSala === 'terminado' || !!online.estado.resultado;
@@ -211,7 +260,7 @@ function interacaoBloqueada() {
   if (!elModalModos.hidden || !elModalCriar.hidden || !elModalConfig.hidden) return true;
   if (online.ativo && online.estado) {
     const st = online.estado.statusSala;
-    if (st === 'aguardando' || st === 'escolhendo-cores') return true;
+    if (st === 'aguardando' || st === 'escolhendo-cores' || st === 'montando') return true;
   }
   if (online.ativo && (online.aguardando || online.escolhendoCores)) return true;
   if (elOverlayCores && !elOverlayCores.hidden && elRevelarCor && elRevelarCor.hidden) return true;
@@ -350,7 +399,9 @@ function fecharConfig() { elModalConfig.hidden = true; }
 // Telas
 // ------------------------------------------------------------------------
 
+/** Mostra uma tela: 'splash' (abertura), 'nome', 'inicio' (menu) ou 'jogo'. */
 function mostrarTela(nome) {
+  if (elTelaSplash) elTelaSplash.hidden = nome !== 'splash';
   if (elTelaNome) elTelaNome.hidden = nome !== 'nome';
   elTelaInicio.hidden = nome !== 'inicio';
   elTelaJogo.hidden = nome !== 'jogo';
@@ -448,6 +499,7 @@ function ultimoLanceAtual() {
 }
 
 function statusEfetivo() {
+  if (emMontagem()) return 'montando';
   if (online.ativo && online.estado) {
     if (online.estado.resultado) return online.estado.resultado.tipo;
     return online.estado.statusJogo || 'em_andamento';
@@ -462,10 +514,17 @@ function resultadoAtual() {
 }
 
 function renderizar(opcoes) {
-  const tabuleiro = jogo.obterTabuleiro();
+  const tabuleiro = tabuleiroVisivel();
+  const visao = visaoImpostor();
   const ultimo = ultimoLanceAtual();
   const status = statusEfetivo();
-  const reiEmXeque = (status === 'xeque' || status === 'xeque-mate') ? jogo.casaDoRei(jogo.vez()) : -1;
+  let reiEmXeque = -1;
+  if (status === 'xeque' || status === 'xeque-mate') {
+    // No Impostor o rei em xeque já foi revelado: é a peça com função de rei.
+    reiEmXeque = visao
+      ? visao.findIndex((v) => v && v.c === jogo.vez() && v.f === 'k')
+      : jogo.casaDoRei(jogo.vez());
+  }
   const destinos = new Map();
   if (config.dicasLances) {
     for (const lance of lancesDaSelecao) {
@@ -475,7 +534,7 @@ function renderizar(opcoes) {
 
   for (const casa of elTabuleiro.children) {
     const sq = Number(casa.dataset.square);
-    casa.classList.toggle('selecionada', selecionada === sq);
+    casa.classList.toggle('selecionada', selecionada === sq || (emMontagem() && selecaoMontagem === sq));
     casa.classList.toggle('em-xeque', reiEmXeque === sq);
     casa.classList.toggle('ultimo-lance', !!(ultimo && (ultimo.from === sq || ultimo.to === sq)));
     casa.classList.toggle('destino-vazio', destinos.get(sq) === 'vazio');
@@ -483,6 +542,7 @@ function renderizar(opcoes) {
 
     const peca = tabuleiro[sq];
     const atual = casa.querySelector('.peca');
+    atualizarSeloImpostor(casa, visao ? visao[sq] : null);
     if (!peca) {
       if (atual) atual.remove();
       casa.removeAttribute('aria-label');
@@ -495,9 +555,42 @@ function renderizar(opcoes) {
       casa.appendChild(criarElementoPeca(peca, estiloPecas()));
     }
     const cor = peca === peca.toUpperCase() ? 'branca' : 'preta';
-    casa.setAttribute('aria-label', nomeDaPeca(peca) + ' ' + cor + ' em ' + casaParaAlgebrica(sq));
+    let rotulo = nomeDaPeca(peca) + ' ' + cor + ' em ' + casaParaAlgebrica(sq);
+    const v = visao && visao[sq];
+    if (v && v.f && v.f !== v.a) rotulo += ' (anda como ' + NOMES_FUNCAO[v.f].toLowerCase() + ')';
+    if (v && v.r) rotulo += ', revelada';
+    casa.setAttribute('aria-label', rotulo);
   }
   atualizarPainel(status, opcoes && opcoes.capturaRecente);
+}
+
+/**
+ * Impostor: marca a casa e coloca o selo com a função real.
+ *  - peça revelada (todos veem): contorno colorido + selo destacado;
+ *  - peça nossa disfarçada (só nós vemos): selo discreto com a função real.
+ * O selo fica fora do elemento .peca, porque ele é redesenhado ao trocar o estilo.
+ */
+function atualizarSeloImpostor(casa, v) {
+  let selo = casa.querySelector('.selo-funcao');
+  const minha = !!(v && v.c === online.cor);
+  const revelada = !!(v && v.r);
+  const disfarcada = !!(minha && v.f && v.f !== v.a && !revelada);
+  casa.classList.toggle('peca-revelada', revelada);
+  casa.classList.toggle('peca-disfarcada', disfarcada);
+  if (!v || !v.f || !(revelada || disfarcada)) {
+    if (selo) selo.remove();
+    return;
+  }
+  if (!selo) {
+    selo = document.createElement('span');
+    selo.className = 'selo-funcao';
+    selo.setAttribute('aria-hidden', 'true');
+    casa.appendChild(selo);
+  }
+  selo.textContent = SIMBOLOS_UNICODE[v.f] || '?';
+  selo.classList.toggle('selo-revelado', revelada);
+  selo.classList.toggle('selo-preta', v.c === 'b');
+  selo.title = (revelada ? 'Revelada: ' : 'Anda como ') + NOMES_FUNCAO[v.f];
 }
 
 function nomeDaPeca(peca) {
@@ -515,7 +608,10 @@ function atualizarPainel(status, capturaRecente) {
 
   elStatus.textContent = montarMensagemStatus(status);
   elStatus.className = 'status-jogo ' + classeDoStatus(status);
-  elModoAtual.textContent = 'Modo: ' + (online.estado && online.estado.rotuloModo ? online.estado.rotuloModo : modoAtual.rotulo);
+  const rotuloVariante = online.ativo && online.estado && online.estado.variante === 'impostor' ? ' · Impostor' : '';
+  elModoAtual.textContent = 'Modo: ' + (online.estado && online.estado.rotuloModo ? online.estado.rotuloModo : modoAtual.rotulo) + rotuloVariante;
+  const elLegenda = document.getElementById('legenda-impostor');
+  if (elLegenda) elLegenda.hidden = !ehImpostor();
 
   if (online.ativo && online.cor) {
     elSuaCor.hidden = false;
@@ -971,7 +1067,7 @@ function corPermitida() {
 }
 
 function selecionarCasa(sq, opcoes) {
-  const peca = jogo.obterTabuleiro()[sq];
+  const peca = tabuleiroVisivel()[sq];
   const cor = corPermitida();
   if (!pecaDaVezEh(peca, cor) || (online.ativo && jogo.vez() !== online.cor)) {
     limparSelecao();
@@ -980,14 +1076,14 @@ function selecionarCasa(sq, opcoes) {
     return false;
   }
   selecionada = sq;
-  lancesDaSelecao = jogo.lances(sq);
+  lancesDaSelecao = lancesDaCasa(sq);
   renderizar();
   som('selecionar');
   return true;
 }
 
 async function tentarMover(de, para, origemPixel) {
-  const candidatas = jogo.lances(de).filter((l) => l.to === para);
+  const candidatas = lancesDaCasa(de).filter((l) => l.to === para);
   if (!candidatas.length) return false;
   if (candidatas[0].promotion) {
     promocaoPendente = { from: de, to: para, origemPixel: origemPixel || null };
@@ -1052,8 +1148,9 @@ async function confirmarPromocao(tipo) {
 function noClique(evento) {
   if (arraste && arraste.consumido) { arraste = null; return; }
   arraste = null;
-  if (interacaoBloqueada()) return;
   const sq = Number(evento.currentTarget.dataset.square);
+  if (emMontagem()) { cliqueMontagem(sq); return; }
+  if (interacaoBloqueada()) return;
   if (selecionada === null) { selecionarCasa(sq); return; }
   if (selecionada === sq) { limparSelecao(); renderizar(); return; }
   const legal = lancesDaSelecao.some((l) => l.to === sq);
@@ -1064,7 +1161,7 @@ function noClique(evento) {
 function noMouseDown(evento) {
   if (evento.button !== 0 || interacaoBloqueada()) return;
   const sq = Number(evento.currentTarget.dataset.square);
-  const peca = jogo.obterTabuleiro()[sq];
+  const peca = tabuleiroVisivel()[sq];
   if (!pecaDaVezEh(peca, corPermitida())) return;
   if (online.ativo && jogo.vez() !== online.cor) return;
   arraste = { from: sq, peca: peca, iniciado: false, consumido: false, x: evento.clientX, y: evento.clientY };
@@ -1073,7 +1170,7 @@ function noTouchStart(evento) {
   if (interacaoBloqueada()) return;
   const t = evento.changedTouches[0];
   const sq = Number(evento.currentTarget.dataset.square);
-  const peca = jogo.obterTabuleiro()[sq];
+  const peca = tabuleiroVisivel()[sq];
   if (!pecaDaVezEh(peca, corPermitida())) return;
   if (online.ativo && jogo.vez() !== online.cor) return;
   arraste = { from: sq, peca: peca, iniciado: false, consumido: false, x: t.clientX, y: t.clientY, toque: true };
@@ -1083,7 +1180,7 @@ function iniciarArrasteVisual() {
   if (!arraste || arraste.iniciado) return;
   arraste.iniciado = true;
   selecionada = arraste.from;
-  lancesDaSelecao = jogo.lances(arraste.from);
+  lancesDaSelecao = lancesDaCasa(arraste.from);
   renderizar();
   const pecaEl = elTabuleiro.querySelector('[data-square="' + arraste.from + '"] .peca');
   if (pecaEl) pecaEl.classList.add('arrastando');
@@ -1163,6 +1260,77 @@ document.addEventListener('touchcancel', () => {
   arraste = null;
   renderizar();
 });
+
+// ------------------------------------------------------------------------
+// Montagem do modo Impostor
+// ------------------------------------------------------------------------
+
+/**
+ * Toque/clique na montagem: a 1ª peça nossa fica selecionada; a 2ª troca a
+ * função com ela (o servidor guarda a montagem e devolve o novo estado).
+ */
+function cliqueMontagem(sq) {
+  if (!elModalConfig.hidden || !elModalConfirma.hidden) return;
+  const v = visaoImpostor()[sq];
+  if (online.estado.impostor.montagem.eu) {
+    toast('Você já está pronto. Toque em “Editar” para mudar.');
+    return;
+  }
+  if (!v || v.c !== online.cor) {
+    selecaoMontagem = null;
+    renderizar();
+    return;
+  }
+  if (selecaoMontagem === null || selecaoMontagem === sq) {
+    selecaoMontagem = selecaoMontagem === sq ? null : sq;
+    som('selecionar');
+    renderizar();
+    return;
+  }
+  const a = selecaoMontagem;
+  selecaoMontagem = null;
+  emitirQuandoPronto('trocarFuncoes', { a: a, b: sq });
+  som('mover');
+}
+
+/** Mostra/atualiza a barra de montagem (textos e botões). */
+function atualizarBarraMontagem() {
+  const el = document.getElementById('barra-montagem');
+  if (!el) return;
+  const ativa = emMontagem();
+  el.hidden = !ativa;
+  // Classe usada no CSS para encolher o tabuleiro e caber a barra (telas largas).
+  elTelaJogo.classList.toggle('em-montagem', ativa);
+  if (!ativa) { selecaoMontagem = null; return; }
+  const m = online.estado.impostor.montagem;
+  const elStatus = document.getElementById('status-montagem');
+  if (m.eu) elStatus.textContent = m.oponente ? 'Começando…' : 'Você está pronto. Aguardando o oponente…';
+  else elStatus.textContent = m.oponente ? 'O oponente já está pronto. Falta você!' : 'Oponente montando…';
+  elStatus.classList.toggle('pronto', !!m.oponente);
+  document.getElementById('btn-montagem-pronto').textContent = m.eu ? 'Editar' : 'Pronto';
+  document.getElementById('btn-montagem-resetar').disabled = !!m.eu;
+}
+
+document.getElementById('btn-montagem-pronto').addEventListener('click', () => {
+  if (!emMontagem()) return;
+  selecaoMontagem = null;
+  emitirQuandoPronto('prontoMontagem', { pronto: !online.estado.impostor.montagem.eu });
+});
+document.getElementById('btn-montagem-resetar').addEventListener('click', () => {
+  if (!emMontagem() || online.estado.impostor.montagem.eu) return;
+  selecaoMontagem = null;
+  emitirQuandoPronto('resetarFuncoes');
+});
+
+/** Avisa (som + mensagem) quando um lance revela peças no Impostor. */
+function avisarRevelacoes(lance) {
+  if (!lance || !lance.revelou || !lance.revelou.length) return;
+  setTimeout(() => som('revelar'), 140);
+  const textos = lance.revelou.map((r) => (r.funcao === 'k'
+    ? 'o rei verdadeiro foi revelado'
+    : 'peça revelada: anda como ' + NOMES_FUNCAO[r.funcao].toLowerCase()));
+  toast('🎭 ' + textos.join(' · ').replace(/^./, (c) => c.toUpperCase()) + '!');
+}
 
 // ------------------------------------------------------------------------
 // Partida local
@@ -1259,7 +1427,9 @@ function aplicarEstadoOnline(estado) {
 
   atualizarAvisoConexao(estado);
   atualizarOverlaysSala(estado);
+  atualizarBarraMontagem();
   document.getElementById('texto-codigo').textContent = estado.codigo || '-----';
+  if (online.ativo) elSubtitulo.textContent = 'Partida online' + (estado.variante === 'impostor' ? ' · modo Impostor 🎭' : '');
 }
 
 function oponenteEstaDesconectado(estado) {
@@ -1399,11 +1569,15 @@ function ligarEventosSocket(s) {
     aplicarCoresEComecar(d);
   });
   s.on('partidaIniciada', (d) => {
-    // Compatibilidade: se um estado antigo emitir isto, só sincroniza.
+    // Impostor: os dois clicaram em Pronto e o relógio começou.
     if (d.estado) aplicarEstadoOnline(d.estado);
     if (elOverlayEspera) elOverlayEspera.hidden = true;
     online.aguardando = false;
     renderizar();
+    if (ehImpostor()) {
+      som('inicio');
+      toast('A partida começou! As brancas jogam.');
+    }
   });
   s.on('lanceFeito', async (d) => {
     const lance = d.lance;
@@ -1426,6 +1600,7 @@ function ligarEventosSocket(s) {
       renderizar({ capturaRecente: lance.captured });
     }
     // Ajusta o som de xeque/fim com o status já aplicado
+    avisarRevelacoes(lance);
     const st = statusEfetivo();
     if (st === 'xeque') som('xeque');
     else if (st === 'xeque-mate' || String(st).indexOf('empate') === 0 || st === 'tempo' || st === 'desistencia') som('fim');
@@ -1544,8 +1719,9 @@ document.getElementById('form-criar').addEventListener('submit', (e) => {
   e.preventDefault();
   const fd = new FormData(e.target);
   const modo = fd.get('modo');
+  const variante = fd.get('variante') || 'classico';
   elModalCriar.hidden = true;
-  emitirQuandoPronto('criarSala', { modo: modo, nome: nomeDoUsuario() });
+  emitirQuandoPronto('criarSala', { modo: modo, variante: variante, nome: nomeDoUsuario() });
 });
 document.getElementById('form-entrar').addEventListener('submit', (e) => {
   e.preventDefault();
@@ -1708,7 +1884,7 @@ document.addEventListener('keydown', () => { if (SonsXadrez) SonsXadrez.garantir
 document.addEventListener('click', (e) => {
   const btn = e.target.closest('button');
   if (!btn || btn.disabled) return;
-  if (btn.id === 'cfg-som' || btn.id === 'btn-config' || btn.id === 'btn-jogar-local' || btn.id === 'btn-criar-sala') return;
+  if (btn.id === 'cfg-som' || btn.id === 'btn-config' || btn.id === 'btn-jogar-local' || btn.id === 'btn-criar-sala' || btn.id === 'btn-splash-jogar') return;
   if (btn.hasAttribute('data-tema-escolha') || btn.hasAttribute('data-modo') || btn.hasAttribute('data-cfg')) return;
   if (btn.closest('#tabuleiro') || btn.closest('#opcoes-promocao')) return;
   som('clique');
@@ -1774,10 +1950,39 @@ sincronizarBotoesConfig();
 aplicarPreferenciasVisuais();
 garantirLoopRelogio();
 
+/** Lê a versão (fonte única: package.json, via servidor) e mostra no canto. */
+function carregarVersao() {
+  const el = document.getElementById('versao-app');
+  if (!el || typeof fetch !== 'function') return;
+  fetch('/versao', { cache: 'no-store' })
+    .then((r) => (r.ok ? r.json() : null))
+    .then((d) => { if (d && d.versao) el.textContent = 'v' + d.versao; })
+    .catch(() => { /* sem versão, sem problema */ });
+}
+carregarVersao();
+
+/** Botão "Jogar" da abertura: segue para o nome (1ª vez) ou direto ao menu. */
+document.getElementById('btn-splash-jogar').addEventListener('click', () => {
+  if (SonsXadrez && SonsXadrez.garantirAudio) SonsXadrez.garantirAudio();
+  som('menu');
+  if (!nomeDoUsuario()) {
+    if (document.getElementById('input-nome')) document.getElementById('input-nome').value = '';
+    mostrarTela('nome');
+    setTimeout(() => { const i = document.getElementById('input-nome'); if (i) i.focus(); }, 50);
+  } else {
+    mostrarTela('inicio');
+  }
+});
+
 (function arranqueTelas() {
   const params = new URLSearchParams(location.search);
   const sala = (params.get('sala') || '').toUpperCase().trim();
   if (sala) document.getElementById('input-codigo').value = sala;
+  // Sem convite, começa pela tela de abertura. Com ?sala=, vai direto ao fluxo.
+  if (!sala) {
+    mostrarTela('splash');
+    return;
+  }
   if (!nomeDoUsuario()) {
     if (document.getElementById('input-nome')) document.getElementById('input-nome').value = '';
     mostrarTela('nome');

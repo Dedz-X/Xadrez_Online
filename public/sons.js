@@ -156,6 +156,8 @@
     menu: function () { tom(480, 0.06, 'sine', 0.04); tom(640, 0.07, 'sine', 0.03, 0.05); },
     tema: function () { tom(500, 0.055, 'sine', 0.035); tom(740, 0.07, 'sine', 0.03, 0.05); },
     selecionar: function () { tom(640, 0.045, 'triangle', 0.035); },
+    // Modo Impostor: peça revelada (um "desmascarar" descendente e misterioso).
+    revelar: function () { tom(660, 0.08, 'sine', 0.045); tom(494, 0.08, 'sine', 0.045, 0.08); tom(370, 0.16, 'triangle', 0.04, 0.16); },
   };
 
   const classico = {
@@ -207,6 +209,11 @@
     },
     selecionar: function () {
       baterMadeira({ freqRuido: 1500, freqCorpo: 260, vol: 0.32, picoRuido: 0.25, picoCorpo: 0.08, durCorpo: 0.07 });
+    },
+    // Modo Impostor: peça revelada (duas batidas de madeira, a segunda mais grave).
+    revelar: function () {
+      baterMadeira({ freqRuido: 1100, freqCorpo: 260, vol: 0.5 });
+      setTimeout(function () { baterMadeira({ freqRuido: 800, freqCorpo: 150, vol: 0.6 }); }, 140);
     },
   };
 

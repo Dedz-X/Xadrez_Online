@@ -1,0 +1,33 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64" width="64" height="64" role="img" aria-labelledby="t">
+  <title id="t">Xadrez Alternativo</title>
+  <!-- Logo original: cavalo de xadrez com uma máscara de "impostor".
+       O selo tem fundo próprio, então funciona nos 3 temas (madeira, verde, oceano). -->
+  <defs>
+    <radialGradient id="fundo" cx="35%" cy="30%" r="80%">
+      <stop offset="0" stop-color="#2b2f3b"/>
+      <stop offset="1" stop-color="#0f1117"/>
+    </radialGradient>
+    <linearGradient id="ouro" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#f3d38a"/>
+      <stop offset="1" stop-color="#c8913a"/>
+    </linearGradient>
+    <linearGradient id="mascara" x1="0" y1="0" x2="1" y2="0">
+      <stop offset="0" stop-color="#d77bff"/>
+      <stop offset="1" stop-color="#9b2ff0"/>
+    </linearGradient>
+  </defs>
+  <circle cx="32" cy="32" r="30" fill="url(#fundo)"/>
+  <circle cx="32" cy="32" r="28.5" fill="none" stroke="url(#ouro)" stroke-width="2"/>
+  <!-- Cavalo (de frente para a esquerda) -->
+  <path fill="url(#ouro)" d="M23 47 C23 41 27 37.5 30 33 C27.5 35 24.5 35.5 22.5 34.5 L18 36.5 C15.8 37.3 14.2 35.3 15.3 33.4 L19 27 C21 20.5 26.5 16 32.5 15.8 L34.5 11 C37 13.8 40 15.3 43.5 15 C42.2 20 39.8 23.5 40.5 29 C41.2 34.5 45 39 45 44.5 L45 47 Z"/>
+  <!-- Crina -->
+  <path fill="none" stroke="#7a5420" stroke-width="1.2" stroke-linecap="round" d="M39.5 18.5 C38 22 37.4 26 38.2 30 M36.8 17.6 C35.6 20 35.2 22.4 35.4 24.6"/>
+  <!-- Base -->
+  <rect x="19" y="47" width="30" height="5.5" rx="2.2" fill="url(#ouro)"/>
+  <rect x="21.5" y="45" width="25" height="3" rx="1.4" fill="#b07c2f"/>
+  <!-- Máscara (o "impostor") -->
+  <path fill="url(#mascara)" stroke="#2a0b40" stroke-width="0.8" d="M17.6 25.2 C22 21.6 31 20.6 38.6 22.4 L39.6 25.6 C34 25.2 30.6 26.4 27.6 28.8 C24.4 28.6 20.6 28.2 17.6 25.2 Z"/>
+  <ellipse cx="27.4" cy="24.9" rx="2.5" ry="1.6" fill="#0f1117"/>
+  <circle cx="26.8" cy="24.5" r="0.55" fill="#fff"/>
+  <path fill="none" stroke="#d77bff" stroke-width="1.1" stroke-linecap="round" d="M39.4 24 C41.5 24.6 43 26 43.6 28"/>
+</svg>
