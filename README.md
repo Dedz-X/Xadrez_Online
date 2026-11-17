@@ -2,207 +2,40 @@
 
 ![Logo](public/logo.svg)
 
-Jogo de xadrez com o modo alternativo **Impostor**: **partida local** no mesmo computador, **contra o bot**, **partida online** em salas com código (com chat rápido) e **modo espectador**. O servidor (Node.js + Express + Socket.IO) é a autoridade das regras e dos relógios. O cliente roda no navegador, sem etapa de compilação.
+Jogo de xadrez no navegador, com o modo alternativo **Impostor**. Dá para jogar no mesmo computador, contra o bot ou online em salas com código (com chat rápido) e modo espectador. O servidor é a autoridade das regras e dos relógios. O cliente roda no navegador, sem etapa de compilação.
 
-Modos: **Livre (sem tempo)**, **Rápido 10 min** e **Blitz 3 min** (sem acréscimo).
-Variantes online: **Clássico** e **Impostor** (funções secretas — veja abaixo).
+## Funcionalidades
 
-## Requisitos
+- **Local (mesmo PC):** os dois jogadores usam o mesmo computador. As brancas começam.
+- **Contra o bot:** escolha a cor e a dificuldade — **Fácil**, **Médio** (pensa 2 lances) ou **Difícil** (pensa até 4 lances). Só xadrez clássico, sem relógio. O bot roda num Web Worker.
+- **Online:** crie uma sala e compartilhe o código (ou o link `?sala=CODIGO`). O anfitrião escolhe quem joga de brancas. Há desistir, propor empate e revanche.
+- **Chat rápido:** frases prontas e emojis, conferidos pelo servidor. Espectadores leem, mas não enviam.
+- **Assistir:** entre com o código de uma sala para acompanhar ao vivo, só olhando.
+- **Tempos:** Livre (sem tempo), Rápido 10 min e Blitz 3 min, sem acréscimo.
+- **Variantes online:** Clássico e Impostor. No Impostor, cada peça tem uma aparência e uma função secreta; as funções reais ficam no servidor.
+- **Na partida:** revisão lance a lance ao terminar, marcações (setas e círculos), pré-lance, estilos de peças (Clássico, Pixel e Simples) e configurações de som, tema e dicas.
 
-- Node.js 18 ou superior (a versão LTS atual serve)
-- npm (vem junto com o Node)
-- Um navegador moderno (Chrome, Edge, Firefox)
+## Como rodar localmente
 
-No Windows, confira a instalação no Prompt de Comando ou no PowerShell:
-
-```bat
-node -v
-npm -v
-```
-
-## Como rodar na sua máquina (Windows)
-
-1. Abra a pasta do projeto (onde está este `README.md` e o arquivo `package.json`).
-2. Instale as dependências (só precisa fazer uma vez, ou depois de puxar atualizações):
-
-```bat
-npm install
-```
-
-3. Inicie o servidor:
-
-```bat
-npm start
-```
-
-4. No navegador, acesse:
-
-```
-http://localhost:3000
-```
-
-Para jogar online com outra pessoa na mesma rede, use o IP da sua máquina no lugar de `localhost` (por exemplo `http://192.168.0.10:3000`). Para jogar pela internet, faça o deploy (veja abaixo).
-
-Para encerrar o servidor, pressione `Ctrl+C` na janela em que ele está rodando.
-
-## Como jogar
-
-- **Abertura:** a primeira tela mostra o logo, o nome e o botão **Jogar**. Na primeira vez ele leva à tela do nome; depois, direto ao menu. Quem abre um link de convite (`?sala=CODIGO`) pula a abertura.
-
-- **Início:** quatro cartões — **Jogar online**, **Contra o bot**, **Local (mesmo PC)** e **Assistir**. Cada um começa a ação com um toque.
-- **Local (mesmo PC):** os dois usam o mesmo computador (hot-seat). Escolha Livre, Rápido 10 min ou Blitz 3 min direto no cartão. As brancas começam.
-- **Contra o bot:** escolha a sua cor (♔, ♚ ou 🎲) e a dificuldade — **Fácil** (joga solto, gosta de capturar), **Médio** (pensa 2 lances) ou **Difícil** (pensa até 4 lances, ~2 s por lance). Só xadrez clássico, sem relógio. “Desfazer” volta até a sua vez. O bot roda num Web Worker, então a página não trava enquanto ele pensa.
-- **Assistir:** digite o código de uma sala online para acompanhar ao vivo, só olhando. Se você tentar entrar numa sala que já tem dois jogadores, o site oferece assistir. Os jogadores veem quantas pessoas estão assistindo (👁️). No Impostor, o espectador só vê o que é público até a partida acabar.
-- **Painel da partida:** subabas **Partida** (relógios, capturas e as ações principais), **Histórico**, **Chat** (só online) e **Opções** (girar, desfazer, som, estilo das peças, configurações e sair).
-- **Revisar partida:** quando a partida termina (em qualquer modo), o botão **Revisar partida** abre a navegação lance a lance: ⏮ ◀ ▶ ⏭, as setas ← → do teclado (Home/End vão às pontas, Esc sai) ou um clique no lance do histórico.
-- **Chat rápido (online):** só frases prontas e emojis (o servidor confere cada mensagem e limita o envio). A mensagem aparece num balão perto do jogador e fica no registro da aba Chat. Há a opção **Silenciar**. Espectadores leem, mas não enviam.
-- **Marcações (setas e círculos):** segure o **botão direito** e arraste de uma casa para outra para desenhar uma seta; botão direito sem arrastar marca um círculo. Cores: normal **verde**, **Shift** vermelho, **Ctrl** (ou Alt) azul, **Shift+Ctrl** amarelo. Repetir a mesma marcação apaga; um clique esquerdo comum no tabuleiro (ou **🧹 Limpar marcações**) limpa tudo, e elas somem quando um lance acontece. Servem para planejar a qualquer momento — inclusive na vez do adversário e na revisão — e **só você vê**. No celular, segure o dedo ~0,5 s numa casa para marcar um círculo.
-- **Pré-lance:** online e contra o bot, na vez do adversário clique (ou arraste) o lance que você quer fazer. Ele fica marcado em rosa e é jogado sozinho logo depois do lance do adversário, se ainda for legal; senão, é cancelado sem aviso. Promoção vira dama. Só um por vez; o botão direito ou um clique numa casa vazia cancela. Ligue/desligue em **Opções → ⚡ Pré-lance**. No Impostor, vale como a sua peça anda de verdade (a função real). No modo local não há pré-lance.
-- **Estilos de peças:** **Clássico** (padrão, plano), **Pixel** (8-bit) e **Simples** (símbolos Unicode), na aba Opções ou nas Configurações.
-- **Jogar online — Criar sala:** escolha o modo de tempo e a variante (Clássico ou Impostor). Você recebe um código curto (como `K7X2Q`) e um link de convite (`?sala=CODIGO`) para copiar.
-- **Jogar online — Entrar com código:** o convidado entra com o código. Em seguida o anfitrião vê o menu **Quem joga de brancas?** (Eu de brancas, Eu de pretas ou Aleatório). O convidado espera essa escolha. A partida e os relógios só começam depois. No Aleatório, cada um vê uma revelação curta (“Você joga de Brancas/Pretas”).
-- Na partida online o servidor valida cada lance. Há **Desistir**, **Propor empate** e **Revanche**. Na revanche o menu de cores aparece de novo (com a sugestão de inverter). O desfazer fica desativado online.
-- Se a conexão cair, recarregue a página: o jogo retoma com o mesmo tabuleiro e relógio (a identidade fica salva no navegador). Salas abandonadas são apagadas depois de alguns minutos.
-
-## Modo Impostor
-
-Xadrez com informação escondida. Cada peça tem uma **aparência** (o que o
-oponente vê, dada pela casa onde ela começou) e uma **função** (como ela anda
-de verdade).
-
-1. **Montagem.** Depois das cores, cada jogador vê só as próprias peças e troca
-   as funções entre elas: toque numa peça e depois em outra para trocar.
-   As quantidades ficam iguais (8 peões, 2 torres, 2 cavalos, 2 bispos, 1 dama
-   e 1 rei, apenas embaralhados). Exemplo: se 2 peões viram bispos, os 2 bispos
-   originais passam a ter outra função (como peão). O rei também pode ser
-   qualquer peça. Há **Resetar** e **Pronto**, sem limite de tempo. O
-   oponente vê “Oponente montando…”. O relógio só começa quando os dois
-   clicam em Pronto (dá para clicar em **Editar** antes disso).
-2. **Durante a partida** você vê a função real das suas peças (um selo no canto
-   quando ela é diferente da aparência). O oponente só vê as aparências.
-3. **Revelação.** Uma peça é revelada quando faz um lance que a peça *aparente*
-   não poderia fazer no xadrez clássico (por exemplo, uma “torre” andando na
-   diagonal). Se o lance também seria possível para a aparência, ela continua
-   em segredo. O **rei verdadeiro** é revelado quando leva xeque. Peça revelada
-   ganha um contorno roxo e um selo roxo com a função real, para os dois
-   jogadores, até o fim da partida.
-4. **Captura.** A peça capturada continua em segredo: a lista de capturadas e o
-   histórico mostram só a aparência.
-5. **Roque** só para o rei verdadeiro: a peça com função de rei em e1/e8 e uma
-   peça com função de torre em a1/h1 (a8/h8), sem terem se movido, com as casas
-   entre elas vazias, sem estar em xeque e sem passar por casa atacada.
-6. **Promoção.** Qualquer peça com função de peão que chega à última fileira
-   promove (com a escolha normal). A peça promovida fica revelada com a nova função.
-7. **Xeque, mate e afogamento** usam as funções reais e o rei verdadeiro. O
-   servidor recusa lances que deixariam o seu rei verdadeiro em xeque (“seu rei
-   ficaria em xeque”).
-
-Regras que precisamos definir:
-
-- **Peão (função):** anda para a frente da sua cor. O passo duplo só vale na
-  fileira inicial dos peões da sua cor (2ª para as brancas, 7ª para as pretas) e
-  se a peça ainda não se moveu. Uma peça com função de peão que começou na 1ª
-  fileira anda uma casa por vez. **En passant** só para a função de peão, contra
-  uma peça com função de peão que acabou de dar o passo duplo.
-- **“Possível para a aparência”** considera só o desenho do movimento e as peças
-  no caminho (não considera xeques, porque ninguém conhece o rei do outro).
-  Uma peça com aparência de peão que chega à última fileira sem promover é
-  revelada (um peão de verdade teria que promover). O roque nunca revela
-  (só a peça de e1/e8 pode rocar, e ela já parece um rei).
-- **Regra dos 50 lances:** desligada neste modo (dependeria das funções secretas
-  e poderia vazar informação). **Material insuficiente:** só rei contra rei.
-  **Tempo esgotado:** empate apenas se quem sobrou tiver só o rei.
-- **Histórico:** notação longa com a letra da aparência (ou da função, se a peça
-  já foi revelada), por exemplo `Cg1-f3`, `e2xd3`, `e7-e8=D`. Quando o lance
-  revela a peça aparece `⚑` com a letra da função real (`e2-d3 ⚑B+`). A notação
-  longa evita a desambiguação, que poderia vazar informação.
-- **Dicas de lance:** nas suas peças elas usam a função real e tratam as peças
-  do oponente só como obstáculos (o navegador não sabe as funções dele). Quem
-  decide se o lance é legal é sempre o servidor.
-
-Segurança: as funções reais ficam só no servidor. Cada jogador recebe um estado
-filtrado (as próprias peças com a função; as do oponente só com a aparência, e
-a função apenas depois de revelada). O teste `test-e2e-impostor.js` confere isso.
-
-Abra **⚙️ Configurações** para som (ligar/desligar e volume), pacote de som (**Moderno** ou **Clássico**, com batidas de madeira), tema do tabuleiro, estilo das peças, dicas de lance e coordenadas.
-
-### Fim da partida e revisão (v1.3.0)
-
-Quando a partida termina, o servidor revela a todos (jogadores e espectadores) a
-função real de **todas** as peças, inclusive das capturadas. No tabuleiro final
-e em **Revisar partida**, cada impostora ganha um selo dourado com a função que
-ela tinha; peças sem selo eram o que pareciam.
-
-## Publicar no Render (serviço web gratuito)
-
-1. Crie um repositório no GitHub e envie esta pasta (sem `node_modules`):
-
-```bat
-git init
-git add .
-git commit -m "Xadrez online"
-git branch -M main
-git remote add origin https://github.com/SEU_USUARIO/SEU_REPO.git
-git push -u origin main
-```
-
-2. No [Render](https://render.com), faça login (pode ser com o GitHub).
-3. Clique em **New** → **Web Service** e selecione o repositório.
-4. Preencha:
-   - **Build Command:** `npm install`
-   - **Start Command:** `npm start`
-   - **Instance type:** Free
-5. Crie o serviço e aguarde o deploy. O Render define a variável `PORT` automaticamente; o servidor já a utiliza.
-6. O endereço público será algo como `https://seu-servico.onrender.com`.
-
-Observação: no plano gratuito o serviço pode “dormir” após um tempo sem tráfego. A primeira visita seguinte demora um pouco para acordar.
-
-
-## Versões
-
-O histórico de versões está em [CHANGELOG.md](CHANGELOG.md).
-Este projeto segue o [Versionamento Semântico](https://semver.org/lang/pt-BR/)
-(`MAJOR.MINOR.PATCH`). A versão atual é **1.3.0**.
-A fonte única da versão é o `package.json`: o servidor a expõe em `GET /versao`
-e o site mostra discretamente no canto inferior direito (ex.: `v1.3.0`).
-
-## Testes do motor
+- Node.js 18 ou superior
+- npm
+- Um navegador moderno (Chrome, Edge ou Firefox)
 
 Na pasta do projeto:
 
-```bat
-npm test
+```bash
+npm install
+npm start
 ```
 
-Isso roda a suíte *perft* (contagem de lances legais) do motor de xadrez, os
-testes de unidade do modo Impostor (`test-impostor.js`), do chat rápido
-(`test-chat.js`), do bot (`test-bot.js`: legalidade dos lances, mate em 1,
-tempo por lance) e do pré-lance/marcações (`test-prelance.js`).
+Abra `http://localhost:3000`. Para encerrar o servidor, pressione `Ctrl+C`.
 
-Os testes de ponta a ponta (`test-e2e-impostor.js` e `test-e2e-v130.js`) sobem
-o servidor numa porta livre e jogam com dois clientes e um espectador
-(espectador sem segredos, chat, revelação no fim do Impostor). O
-`test-e2e-prelance.js` abre páginas reais no Chrome com o `puppeteer-core`
-(também fora do projeto, ex.: `/tmp/sockt`, ou na variável `PUPPETEER_CORE`;
-Chrome em `CHROME_PATH`) e testa o pré-lance online, no Impostor e contra o bot,
-além das marcações; sem puppeteer/Chrome ele é pulado. Ele usa o `socket.io-client`, que não é dependência do projeto:
-instale-o fora da pasta (por exemplo em `/tmp/sockt`) ou aponte a variável
-`SOCKET_IO_CLIENT` para ele, e rode:
+Na mesma rede, outra pessoa acessa pelo IP da máquina no lugar de `localhost` (por exemplo `http://192.168.0.10:3000`).
 
-```bat
-npm run test:e2e
-```
+## Tecnologias
 
-## Estrutura
+- **Node.js** 18 ou superior (`npm start` executa `node server.js`)
+- **Express** e **Socket.IO**
+- Cliente no navegador (HTML, CSS e JavaScript), sem compilação
 
-- `server.js` — servidor HTTP e salas Socket.IO
-- `chess-engine.js` — regras do xadrez (usado no servidor e no cliente; cópia idêntica em `public/`)
-- `impostor-engine.js` — regras do modo Impostor (cópia idêntica em `public/`)
-- `chat-rapido.js` — lista de frases/emojis do chat rápido e limitador de envio (cópia idêntica em `public/`)
-- `public/bot.js` e `public/bot-worker.js` — o bot (Fácil, Médio, Difícil) e o Web Worker que o roda
-- `public/pecas.js` — desenho das peças (Clássico, Pixel e Simples)
-- `public/prelance.js` — pré-lance: destinos possíveis e conferência na nova posição
-- `public/marcacoes.js` — setas e círculos do botão direito (camada SVG)
-- `test-perft.js`, `test-impostor.js`, `test-chat.js`, `test-bot.js`, `test-prelance.js`, `test-e2e-impostor.js`, `test-e2e-v130.js`, `test-e2e-prelance.js` — testes
-- `public/` — página, estilos, interface, peças SVG e sons (Web Audio)
-- `public/logo.svg` — logo (cavalo com máscara de impostor), usado também como favicon
+A versão atual é **1.3.0**. O histórico está em [CHANGELOG.md](CHANGELOG.md).
